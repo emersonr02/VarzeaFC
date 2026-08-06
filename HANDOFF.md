@@ -26,7 +26,7 @@ confiável — que é o que obriga a arquitetura abaixo.
 | Persistência da carreira | **Receita**, nunca o placar | Anti-cheat + replay eterno em ~200 bytes |
 | Balanceamento | **JSON versionado**, fora do código | Tunar não pode exigir recompilar |
 | Score | **Contínuo**; o nível é rótulo cosmético | Nível como critério empata o topo e o desempate vira arbitrário |
-| Prêmios individuais | **Só dois: Bola de Ouro e Equipe do Ano** | Ver secção 5 |
+| Prêmios individuais | ~~Só dois~~ **Quatro: Bola de Ouro, Equipe do Ano, Rei da América, Equipe do Ano da América** | Reaberto no Roadmap §9 Bloco 1 (2026-08-06) — ver secção 5 e secção 9 |
 | Conquistas | **Uma por período**, sem aninhamento | Top 1 não conta como Top 5 nem Top 10 |
 | Ranking semanal/mensal | Livre (probabilidade) | Vitrine; farmável e tudo bem |
 | Bola de Ouro anual | **Seed fixa do período** | É a conquista máxima; se for farmável não vale nada |
@@ -135,7 +135,13 @@ que ficou de fora de propósito (modo jogo a jogo, autenticação).
 
 ---
 
-## 5. Sistema de pontuação (calibrado, ruleset 1.0.0)
+## 5. Sistema de pontuação (histórico — ver secção 9 pra calibração atual, ruleset 1.1.0)
+
+**Atualização (2026-08-06):** esta secção descreve a calibração ORIGINAL (ruleset 1.0.0),
+antes dos três blocos do Roadmap §9. Os números abaixo já não refletem o motor —
+ficam como registo histórico das decisões (por que só dois prêmios, por que o gate da
+Bola de Ouro, etc.). A tabela de pesos e os três critérios **atuais** (ruleset 1.1.0,
+depois de Bloco 1+2+3) estão na secção 9.
 
 Pesos **derivados**, nunca escritos à mão: `peso = log(1/frequência)`, normalizado para a
 liga menor valer 10. A compressão logarítmica é obrigatória — sem ela um evento de 0,4%
@@ -161,7 +167,7 @@ Produção usa **percentil da própria posição** (senão zagueiro nunca ranque
 quadrada** (retorno decrescente — o gol 300 não pode valer o mesmo que o gol 30, senão o
 ranking vira "quem jogou mais temporadas").
 
-### Só dois prêmios individuais
+### Só dois prêmios individuais (histórico — reaberto no Roadmap §9 Bloco 1)
 Chuteira de Ouro, Luva de Ouro, Melhor Defensor e Meia do Ano foram **removidos**.
 A Equipe do Ano (melhor de cada posição) resolve a paridade entre posições **por construção**:
 cada posição compete só contra si mesma, então não é preciso tunar prêmio por setor.
@@ -341,55 +347,133 @@ Postgres, slots geríveis, ranking e conquistas persistentes (secção 7, itens 
 desses itens já existe e já foi verificado contra Postgres real (secção 7.6), só fica
 inerte até existir login. O MVP é: motor + API + front consumindo, sem persistência.
 
-### Três blocos de mudança de produto, todos dentro do MVP (decisão do utilizador:
-"os 3, mas não faça nada agora" — nada disto foi implementado ainda)
+### Três blocos de mudança de produto — TODOS IMPLEMENTADOS (sessão overnight de
+2026-08-06, utilizador foi dormir e pediu pra "atacar todos os blocos"; decisões em
+aberto que exigiam produto foram tomadas autonomamente e ficam documentadas abaixo pra
+revisão). Testado build+testes+Monte Carlo+navegador depois de cada bloco; commitados e
+enviados a `origin/main` em 3 commits separados (um por bloco).
 
-**Bloco 1 — regras/pontuação, contido no motor + Monte Carlo, sem estado novo:**
-- Draft: **3 → 2 opções** por rodada (`CareerSimulator.DrawCandidates`, hoje fixo em 3).
-- Bola de Ouro / Equipe do Ano **gated por força da liga**: hoje o único gate é "foi
-  Equipe do Ano"; falta pesar a força da liga do jogador — fora do top-5 europeu, chance
-  próxima de zero pros prêmios globais. Ideia do utilizador: "um jogador de uma liga fora
-  do top 5 nunca ganharia uma Bola de Ouro e dificilmente estaria no elenco do ano."
-- **Pontuação por prestígio de país/liga**: Premier League > Espanha/Itália > França >
-  resto; segunda divisão = metade do valor da divisão principal do mesmo país. **Isto não
-  dá pra derivar por frequência** como o resto da tabela da secção 5 — vai precisar de um
-  multiplicador por país **autoral**, documentado como exceção deliberada (mesma lógica
-  da seed fixa da Bola de Ouro anual, que também é uma exceção assumida às regras gerais
-  de "nunca escrito à mão").
-- **Novo par de prêmios continental**: "Rei da América" (peso ~1/3 da Bola de Ouro) e
-  "Equipe do Ano da América". **Reabre a decisão travada da secção 2** ("só dois prêmios
-  individuais") — não é descuido, é mudança deliberada; atualizar a tabela da secção 2
-  quando isto for implementado.
-- Qualquer mudança deste bloco exige rodar `Varzea.MonteCarlo` de novo e reconferir os
-  3 critérios de aceite da secção 5 — a tabela de pesos toda deve ser recalibrada.
+**Bloco 1 — regras/pontuação.** ✅ Implementado, recalibrado, testado.
+- Draft: **3 → 2 opções** por rodada (`CareerSimulator.DrawCandidates`,
+  `DraftCandidatesPerRound`).
+- Bola de Ouro / Equipe do Ano **gated por `LeagueGrade`** do país: fator 1,00 (grade 3,
+  top-5 europeu) · 0,35 (grade 2) · 0,10 (grade 1) multiplicando a chance inteira. Como a
+  Bola de Ouro só concorre quem entrou na Equipe do Ano, o efeito composto já deixa a
+  Bola de Ouro "quase nunca" fora do top-5, sem precisar de um segundo gate.
+- **Prestígio de liga por país** (`CountryDef.LeaguePrestige` em `balance.json`,
+  multiplicador autoral — exceção deliberada, mesma lógica da seed fixa da Bola de Ouro
+  anual): Inglaterra 1,00 · Espanha/Itália 0,90 · Alemanha/França 0,80 ·
+  Brasil/Argentina 0,65 · Portugal/Holanda 0,50 · Uruguai 0,35. Aplicado em
+  `CareerScorer` só aos títulos **domésticos** (liga + copa nacional) — continental e
+  seleção já são globais por natureza, e os prêmios individuais já são gated por
+  `LeagueGrade` acima.
+- **Rei da América + Equipe do Ano da América** (`TitleKind.KingOfAmerica` /
+  `SouthAmericanTeamOfTheYear`): só para países `southAmerican: true` (Brasil, Argentina,
+  Uruguai), mesmo padrão de gate do par global mas com limiares próprios. **Reabre a
+  decisão travada da secção 2** — tabela já atualizada lá.
+- `AwardScale`/`AwardCap` recalibrados (5,0/300 → 2,6/220): com 4 tipos de prêmio
+  individual empilhando na mesma carreira de elite (sobretudo sul-americana), os valores
+  antigos deixavam o bloco de prêmios dominar o critério 3 do Monte Carlo (~50% medido,
+  alvo ~25%). Ver tabela de pesos atual mais abaixo.
 
-**Bloco 2 — moral/relacionamento, estado novo que realimenta a performance:**
-- Relação com equipe, técnico e torcida — dinâmica, isto é, muda com o resultado em
-  campo E, na direção contrária, influencia o próprio resultado (`perf` no
-  `CareerSimulator` ganha um termo dependente de moral).
-- Jogador pode pedir pra sair — a ação em si prejudica a relação.
-- Recusar uma proposta de clube maior **eleva muito** a moral.
-- Eventos aleatórios ("dilemas fictícios") que mexem na moral, fora do fluxo de
-  transferência.
-- Em aberto: é uma moral única ou três separadas (equipe/técnico/torcida)? Escala
-  numérica ainda não definida — decidir antes de implementar pra não ter que redesenhar o
-  schema de `CareerResult`/`SeasonResult` duas vezes.
+**Bloco 2 — moral/relacionamento.** ✅ Implementado, recalibrado, testado.
+Decisões do utilizador antes de dormir: **três valores separados** (equipe/técnico/
+torcida), e "vai de acordo com o jogador" pro resto. A escala numérica ficou em aberto —
+**decisão autónoma desta sessão**: float `-1.0..+1.0` por valor, começando neutro (0.0).
+- Evolução 100% automática por temporada, função pura de `recipe+RNG` (mesmo domínio
+  `"career"` já derivado) — **sem** mudar o schema de `CareerRecipe`, então
+  `AdvanceCareer`/`SimulateCareer` continuam equivalentes por construção (os 11 testes de
+  determinismo/equivalência continuam verdes sem alteração).
+- Título de liga/continental sobe a moral; posição ≥15 desce; prêmio individual sobe a
+  torcida mas custa um pouco de time (ciúme do grupo); lesão moderada/grave desgasta o
+  técnico.
+- Moral realimenta `perf` na temporada seguinte (peso `MoralPerfWeight=6.0`, comparável
+  ao ruído ±8 que já existia) — carreiras com moral baixa entram numa espiral real
+  (verificado no navegador: sequência de finais medianos derrubou moral visivelmente e o
+  score final ficou baixo).
+- "Recusar proposta de clube maior eleva muito a moral" — implementado exatamente como
+  pedido, ligado ao fluxo de transferência já existente.
+- **Cortes de escopo desta sessão** (autónomos, pra revisar):
+  - "Jogador pode pedir pra sair" → implementado como **gatilho automático**, não ação
+    manual do jogador: moral média abaixo de -0,5 por 2+ temporadas seguidas aumenta a
+    chance de oferta de transferência na temporada seguinte (`moralPressure`) e custa
+    mais moral. Uma ação manual de verdade exigiria um novo tipo de decisão fora do fluxo
+    de eventos aleatórios de hoje — não foi construída.
+  - "Dilemas fictícios" → só o **sinal numérico** existe (evento aleatório, 12%/temporada,
+    desloca um dos três valores em ±0,15). Conteúdo narrativo variado (textos diferentes
+    por dilema) não foi escrito; o front mostra uma mensagem genérica
+    ("🗣️ Um imprevisto nos bastidores...") quando a flag `MoraleDilemma` vem `true`.
 
-**Bloco 3 — sistema de contratos (o mais arquitetural, substitui o mecanismo atual):**
-- Hoje a "oferta de transferência" é puramente probabilística por temporada (`perf > 14`
-  ou `perf < -16`, ver `CareerSimulator.cs`). O novo sistema é contrato com prazo:
-  expira, pode renovar ou não; se não renovar, o motor gera 1+ propostas de acordo com
-  overall, potencial, atuações recentes e idade.
-- Propostas também chegam **frequentemente fora da expiração**, proporcional ao nível do
-  jogador — não é só o gatilho binário de hoje.
-- Em aberto, precisa de decisão antes de implementar: duração do contrato (fixa? por
-  faixa de potencial/idade?), quantas propostas gerar na não-renovação e de que critério
-  exato surgem, e como isso interage com o Bloco 2 (moral provavelmente afeta chance de
-  renovação e quantidade/qualidade das propostas).
+**Bloco 3 — sistema de contratos.** ✅ Implementado, recalibrado, testado.
+Decisão do utilizador antes de dormir sobre duração: função do **overall atual + idade**,
+não do potencial bruto — exemplo dado: "tipo o Modric tem um potencial de 94, capacidade
+de 82, mas já tem 40 anos, o Milan não vai renovar por 5 anos, agora o over só cai".
+- `NextContractDuration(age, peakAge, retireAge, rng)`: crescendo (idade < pico) → 4-5
+  temporadas · no auge (pico..pico+3) → 3-4 · declinando (> pico+3) → 1-2, **nunca**
+  ultrapassando a idade de aposentadoria já sorteada. Implementa o exemplo do Modric
+  diretamente — a fase da carreira manda, não `Potential`.
+- Estado (`contractYear`/`contractDuration`) é local ao loop do `RunCareer`, igual a
+  `tier` — **sem** mudar o schema de `CareerRecipe`, mesma garantia de re-simulação do
+  zero que já sustentava `AdvanceCareer`.
+- Ao vencer o contrato, dispara **sempre** uma decisão (não é probabilística como as
+  ofertas de fora do ciclo): `renewChance` pondera forma recente (`perf`), moral do
+  Bloco 2 (`moraleAtStart`) e proximidade da aposentadoria. Renovou → contrato novo
+  automático, sem decisão do jogador. Não renovou → 1 proposta (`upgrade = overall >=
+  target do tier atual`).
+- Fora do ciclo de contrato: o gatilho de `perf`/`moralPressure` do Bloco 2 continua,
+  **mais** uma chance de "olheiro" proporcional ao overall (`scoutingChance`) — antes só
+  existia o gatilho de forma.
+- **Cortes de escopo desta sessão** (autónomos, pra revisar):
+  - "O motor gera **1+** propostas" na não-renovação → implementada **exatamente 1**
+    proposta, reutilizando o mesmo fluxo accept/reject de `PendingTransferOffer` e
+    `TransferChoices` que já existia. Múltiplas propostas simultâneas pra escolher exigiria
+    um novo tipo de decisão (índice em vez de bool) tocando `CareerRecipe`, os contratos
+    da API e a UI de decisão do front — não foi construído.
+  - Recusar a única proposta da não-renovação → fica no clube atual com contrato curto
+    (1-2 temporadas) de "prova". Não conta pro bônus de moral "recusou clube maior" —
+    isso é uma aposta em si mesmo, não lealdade a um contrato vigente que ainda existia.
+  - **Bug encontrado e corrigido no caminho:** a proposta de não-renovação não tinha o
+    guard `tier<5`/`tier>1` que os gatilhos de fora do ciclo já tinham — `tier` podia sair
+    de `[1,5]` e quebrar o lookup de `Tiers` na temporada seguinte (`InvalidOperationException`
+    no Monte Carlo). Corrigido com `Math.Clamp` na atualização de `tier`.
 
-### Ordem de implementação sugerida
-Bloco 1 primeiro (mudança de regra, testável no Monte Carlo em horas, não exige desenho
-de estado novo) → Bloco 2 (precisa de decisão sobre o formato da moral antes de mexer no
-`CareerSimulator`) → Bloco 3 (o mais caro em design; considerar prototipar as regras de
-geração de propostas no espelho Python antes de portar pro C#, como já foi feito pro
-sistema de pontuação da secção 5).
+### Calibração atual (ruleset 1.1.0, depois de Bloco 1+2+3, 10.000 carreiras)
+
+| Título | Frequência | Peso |
+|---|---:|---:|
+| Rei da América | 1,06% | 18,2 |
+| Bola de Ouro | 2,97% | 14,1 |
+| Liga menor | 8,23% | 10,0 |
+| Copa do Mundo | 8,30% | 10,0 |
+| Equipe do Ano da América | 10,08% | 9,2 |
+| Continental secundária | 21,71% | 6,1 |
+| Equipe do Ano | 22,30% | 6,0 |
+| Liga média | 33,12% | 4,4 |
+| Continental principal | 40,29% | 3,6 |
+| Liga top-5 | 41,61% | 3,5 |
+| Copa nacional | 65,14% | 1,7 |
+
+Escalas de bloco (`Scoring.cs`): `TitleScale=4.4`, `AwardScale=2.6` (era 5,0),
+`TitleCap=420`, `AwardCap=220` (era 300), `ProductionCap=28`, `PeakCap=7.6`.
+
+**Critérios de aceite (10k carreiras, `dotnet run --project Varzea.MonteCarlo`):**
+1. Distribuição: mediana=83, p99=323, máx=511. Top 1%: 100/100 scores distintos,
+   dispersão 37%. ✔ (a escala comprimiu vs. a secção 5 antiga — `verdicts.ts` já foi
+   recalibrado na mesma proporção, ~0,7×)
+2. Todas as 9 posições no top 10%: 3,5%-16,7%. ✔
+3. Contribuição por bloco (top 10%): títulos 67,2% (alvo ~60%) · prêmios 23,7%
+   (alvo ~25%) · produção 6,5% (alvo ~10%) · pico 2,6% (alvo ~5%). ✔ próximo o bastante.
+
+### O que falta pra fechar de vez (pra revisão de amanhã)
+1. **Testar o "modo jogo a jogo" com os 3 blocos** — só foi testado o modo "temporada a
+   temporada" nesta sessão (é o único implementado, ver secção 7 item 7).
+2. Decidir se vale a pena construir os cortes de escopo do Bloco 2/3 listados acima
+   (ação manual de "pedir pra sair", conteúdo narrativo de dilemas, múltiplas propostas
+   simultâneas na não-renovação) — nenhum deles quebra nada hoje, só entregam menos do
+   que o texto original do roadmap pedia.
+3. Ainda não mesclado no `Varzea.Web`: nenhum PR pendente — tudo foi commitado direto em
+   `main` nesta sessão (branch única, sem PR intermediário).
+4. Rodar `dotnet test`/Monte Carlo mais uma vez depois de qualquer ajuste manual nos
+   números acima — os três critérios são sensíveis a mudanças pequenas (ver o
+   "whack-a-mole" do Bloco 1 nesta sessão: mexer na frequência de um prêmio sozinho não
+   bastou, foi preciso também recalibrar `AwardScale`/`AwardCap`).
