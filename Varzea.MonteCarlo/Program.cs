@@ -74,13 +74,17 @@ public static class Program
 
         Console.WriteLine($"mediana={p50:F0}  p99={p99:F0}  máx={max:F0}");
 
-        // quantas carreiras distintas ocupam o top 1%? se poucas, houve empate
+        // quantas carreiras distintas ocupam o top 1%? se poucas, houve empate.
+        // Arredondar a 2 casas (não a inteiro) — senão o próprio teste achata o score.
         var top1 = scored.OrderByDescending(s => s.Score.Total)
                          .Take(Math.Max(1, scored.Count / 100)).ToList();
-        int distinct = top1.Select(s => Math.Round(s.Score.Total)).Distinct().Count();
+        int distinct = top1.Select(s => Math.Round(s.Score.Total, 2)).Distinct().Count();
         double ratio = (double)distinct / top1.Count;
-        Console.WriteLine($"top 1%: {distinct}/{top1.Count} scores distintos ({ratio:P0}) " +
-                          (ratio > 0.80 ? "✔ OK" : "✘ ACHATADO — desempate viraria aleatório"));
+        double hi = top1[0].Score.Total, lo = top1[^1].Score.Total;
+        double spread = hi > 0 ? (hi - lo) / hi : 0;
+        Console.WriteLine($"top 1%: {distinct}/{top1.Count} scores distintos ({ratio:P0}), " +
+                          $"dispersão {spread:P0} " +
+                          (ratio > 0.95 && spread > 0.15 ? "✔ OK" : "✘ ACHATADO — desempate viraria aleatório"));
     }
 
     /// <summary>Critério 2: toda posição precisa conseguir chegar ao top 10%.</summary>
@@ -102,19 +106,29 @@ public static class Program
         Console.WriteLine(ok ? "✔ OK" : "✘ posição sub-representada — revisar normalização por posição");
     }
 
-    /// <summary>Critério 3: nenhum bloco pode dominar a carreira mediana.</summary>
+    /// <summary>
+    /// Critério 3: nenhum bloco pode dominar a carreira mediana.
+    /// Medir no top 10%, não na média global: prêmios raros zeram na maioria
+    /// das carreiras e distorcem a média geral.
+    /// </summary>
     private static void PrintCriterion3(List<(CareerResult Career, ScoreBreakdown Score)> scored)
     {
-        Console.WriteLine("\n── CRITÉRIO 3: contribuição média por bloco ──");
+        Console.WriteLine("\n── CRITÉRIO 3: contribuição por bloco ──");
         var valid = scored.Where(s => s.Score.Total > 0).ToList();
-        double t = valid.Average(s => s.Score.Titles / s.Score.Total);
-        double a = valid.Average(s => s.Score.Awards / s.Score.Total);
-        double p = valid.Average(s => s.Score.Production / s.Score.Total);
-        double k = valid.Average(s => s.Score.Peak / s.Score.Total);
+        var top10 = scored.OrderByDescending(s => s.Score.Total)
+                          .Take(Math.Max(1, scored.Count / 10)).ToList();
 
-        Console.WriteLine($"  títulos    {t:P1}  (alvo ~60%)");
-        Console.WriteLine($"  prêmios    {a:P1}  (alvo ~25%)");
-        Console.WriteLine($"  produção   {p:P1}  (alvo ~10%)");
-        Console.WriteLine($"  pico       {k:P1}  (alvo  ~5%)");
+        Console.WriteLine($"  {"BLOCO",-10}{"GERAL",8}{"TOP 10%",10}   alvo");
+        void Row(string label, Func<ScoreBreakdown, double> block, string alvo)
+        {
+            double geral = valid.Average(s => block(s.Score) / s.Score.Total);
+            double top = top10.Average(s => block(s.Score) / s.Score.Total);
+            Console.WriteLine($"  {label,-10}{geral,7:P1}{top,9:P1}   {alvo}");
+        }
+        Row("títulos", s => s.Titles, "~60%");
+        Row("prêmios", s => s.Awards, "~25%");
+        Row("produção", s => s.Production, "~10%");
+        Row("pico", s => s.Peak, "~5%");
+        Console.WriteLine("  (prêmios raros zeram na maioria das carreiras — o TOP 10% é a leitura honesta)");
     }
 }
