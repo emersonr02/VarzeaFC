@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "varzea-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Varzea.Web", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
