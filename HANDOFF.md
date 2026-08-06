@@ -47,64 +47,81 @@ confiável — que é o que obriga a arquitetura abaixo.
 ```
 Varzea.Engine/            class library pura — compila OK
   Rng/Pcg32.cs            PRNG determinístico + derivação por domínio
-  Model/Domain.cs         atributos, posições, CareerRecipe, CareerResult
+  Model/Domain.cs         atributos, posições, CareerRecipe, CareerResult, CareerProgress
   Ruleset/Ruleset.cs      POCOs de balanceamento
   Ruleset/balance.json    TODOS os números (lendas, pesos, roles, países, tiers, curva)
+  Ruleset/rarity-weights.json  calibração congelada (gerada pelo Monte Carlo, versionada)
   Simulation/CareerSimulator.cs   draft, over dinâmico, roles, temporadas, títulos, transferências
   Scoring/Scoring.cs      RarityCalibrator + CareerScorer
 Varzea.MonteCarlo/        runner: N carreiras → 3 critérios de aceite → rarity-weights.json
-Varzea.Engine.Tests/      determinismo (o teste que sustenta ranking e replay)
+Varzea.Engine.Tests/      determinismo + equivalência AdvanceCareer (o que sustenta ranking e replay)
+Varzea.Api/               ASP.NET Core Minimal API — draft/position/advance/save (ver secção 7.5)
 tools/montecarlo_mirror.py  espelho Python — BANCO DE PROVA, não é produto
 ```
 
 ### Estado de build
-- `Varzea.Engine` → **compila**
-- `Varzea.Engine.Tests` → **compila** (testes ainda não foram executados)
-- `Varzea.MonteCarlo` → **falha: CS5001, sem método Main**
+Todos os projetos compilam e têm testes passando (`dotnet build Varzea.slnx` / `dotnet test
+Varzea.Engine.Tests`). O `Varzea.sln` original nunca chegou a faltar de verdade — o
+repositório já tinha `Varzea.slnx` (formato novo do VS) quando a sessão que escreveu esta
+versão do HANDOFF começou; a suspeita de CS5001 registrada numa versão anterior deste
+documento não reproduziu.
 
-**Causa provável do CS5001:** o `Program.cs` não chegou ao repositório, ou está fora da pasta
-do projeto, ou foi salvo como `Program.cs.txt` (o Windows esconde extensões conhecidas).
-O ficheiro existe e está correcto na origem (`public static class Program` com
-`public static void Main(string[] args)`, e o `.csproj` tem `<OutputType>Exe</OutputType>`).
-Confirmar com `dir /X Varzea.MonteCarlo` antes de mexer em qualquer outra coisa.
+Há uma quarta branch com trabalho não mesclado em `main`:
+- `feature/postgres-persistence` — `Varzea.Data` (EF Core + Npgsql), ver secção 7.6.
+  **Nunca rodou contra um Postgres de verdade.**
+- `feature/dev-environment-setup` (esta branch) — `docker-compose.yml` pra subir esse
+  Postgres localmente, e `.nvmrc` fixando Node 20 (o ambiente onde isto foi escrito tinha
+  Node v16.16, EOL).
 
-### Falta no repositório
-- `Varzea.sln` (criar com `dotnet new sln` e `dotnet sln add` nos três projetos)
-- Provavelmente `Varzea.MonteCarlo/Program.cs`
-
-### Aviso importante
-O C# **nunca foi compilado** pelo autor original (ambiente sem SDK .NET).
-Toda a calibração da secção 5 foi obtida com o espelho Python, não com o C#.
-**A primeira tarefa é fazer os três projetos compilarem e confirmar que a saída do
-Monte Carlo em C# bate com os números do espelho.** Se divergirem, o C# saiu de sincronia.
+### Aviso sobre a calibração
+A secção 5 foi calibrada com o espelho Python E confirmada batendo com o motor C# via
+Monte Carlo (`dotnet run --project Varzea.MonteCarlo`). Qualquer mudança em
+`CareerSimulator` ou `Scoring.cs` deve rodar os dois de novo e comparar.
 
 ---
 
 ## 4. Como correr
 
 ```bash
-dotnet new sln -n Varzea
-dotnet sln add Varzea.Engine/Varzea.Engine.csproj
-dotnet sln add Varzea.MonteCarlo/Varzea.MonteCarlo.csproj
-dotnet sln add Varzea.Engine.Tests/Varzea.Engine.Tests.csproj
-
-dotnet build
-dotnet test
+dotnet build Varzea.slnx
+dotnet test Varzea.Engine.Tests/Varzea.Engine.Tests.csproj
 dotnet run --project Varzea.MonteCarlo -- 10000 Varzea.Engine/Ruleset/balance.json
+dotnet run --project Varzea.Api   # sobe em http://localhost:52525 (ver launchSettings.json)
 
 # espelho Python (iteração rápida de balanceamento, segundos em vez de compilar)
 python3 tools/montecarlo_mirror.py 10000
 ```
 
-Se os testes não encontrarem o `balance.json`, adicionar ao `Varzea.Engine.Tests.csproj`:
+Se os testes não encontrarem o `balance.json`, conferir se `Varzea.Engine.Tests.csproj` e
+`Varzea.Api.csproj` ainda têm o `<None Include>` que copia `Ruleset/*.json` pro output —
+os dois já vêm assim, é só pra outros projetos novos que precisem do ruleset em runtime.
 
-```xml
-<ItemGroup>
-  <None Include="..\Varzea.Engine\Ruleset\balance.json" Link="Ruleset\balance.json">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-  </None>
-</ItemGroup>
+### Postgres local (pra testar a branch `feature/postgres-persistence`)
+
+Precisa de [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado —
+este repositório não traz isso, só o `docker-compose.yml` que sobe o banco.
+
+```bash
+docker compose up -d          # Postgres 16 em localhost:5432 (usuário/senha/db: varzea)
+docker compose ps             # confirmar "healthy" antes de migrar
+
+git checkout feature/postgres-persistence
+dotnet ef database update --project Varzea.Data \
+  -- --connection "Host=localhost;Database=varzea;Username=varzea;Password=varzea-dev-only"
 ```
+
+Pra API usar esse banco (em vez do modo sem-persistência padrão), configurar
+`ConnectionStrings:Varzea` em `Varzea.Api/appsettings.Development.json` (não versionar
+credenciais reais nesse arquivo fora de dev local) ou via variável de ambiente
+`ConnectionStrings__Varzea`. **Isto nunca foi executado** — confirmar que a migration
+aplica sem erro antes de assumir que o schema da secção 7.6 está correto.
+
+### Node (pra quando começar o front React, passo 7)
+
+O ambiente onde a maior parte deste HANDOFF foi escrita tinha Node v16.16 (EOL desde
+2023) — Vite e as versões atuais de React não garantem funcionar nisso. `.nvmrc` na raiz
+fixa Node 20 (LTS). Com `nvm` instalado: `nvm install && nvm use`. Sem `nvm`, instalar
+qualquer Node ≥ 20 LTS direto do site oficial.
 
 ---
 
