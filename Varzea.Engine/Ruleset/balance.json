@@ -1,0 +1,152 @@
+{
+  "version": "1.0.0",
+
+  "legends": [
+    { "name": "Pelé",              "ratings": [88, 95, 85, 93, 35, 80, 90, 85] },
+    { "name": "Garrincha",         "ratings": [90, 78, 70, 97, 25, 65, 95, 60] },
+    { "name": "Zico",              "ratings": [75, 90, 92, 87, 40, 65, 85, 88] },
+    { "name": "Sócrates",          "ratings": [60, 78, 90, 80, 45, 70, 75, 70] },
+    { "name": "Romário",           "ratings": [85, 93, 68, 88, 20, 68, 83, 75] },
+    { "name": "Ronaldo Fenômeno",  "ratings": [94, 92, 72, 93, 22, 82, 88, 80] },
+    { "name": "Ronaldinho Gaúcho", "ratings": [82, 85, 88, 96, 30, 72, 98, 82] },
+    { "name": "Rivaldo",           "ratings": [78, 88, 82, 90, 35, 75, 92, 95] },
+    { "name": "Cafu",              "ratings": [85, 55, 75, 78, 82, 83, 72, 60] },
+    { "name": "Roberto Carlos",    "ratings": [93, 85, 72, 78, 80, 88, 75, 98] },
+    { "name": "Maradona",          "ratings": [85, 87, 90, 97, 32, 65, 96, 80] },
+    { "name": "Zidane",            "ratings": [72, 85, 93, 93, 45, 75, 90, 85] },
+    { "name": "Cruyff",            "ratings": [88, 84, 89, 92, 38, 68, 88, 78] },
+    { "name": "Beckenbauer",       "ratings": [75, 65, 88, 80, 90, 78, 70, 65] },
+    { "name": "Messi",             "ratings": [85, 90, 87, 96, 25, 68, 95, 85] },
+    { "name": "Cristiano Ronaldo", "ratings": [90, 94, 80, 88, 32, 88, 85, 88] },
+    { "name": "Neymar Jr",         "ratings": [91, 85, 82, 95, 28, 62, 96, 80] },
+    { "name": "Xavi",              "ratings": [60, 65, 96, 85, 55, 60, 78, 75] },
+    { "name": "Maldini",           "ratings": [78, 45, 75, 72, 95, 85, 60, 55] },
+    { "name": "Ibrahimović",       "ratings": [72, 90, 75, 85, 30, 90, 85, 82] }
+  ],
+
+  "positionWeights": {
+    "GK": [0.10, 0.02, 0.15, 0.08, 0.40, 0.20, 0.03, 0.02],
+    "CB": [0.10, 0.03, 0.12, 0.07, 0.35, 0.25, 0.04, 0.04],
+    "FB": [0.18, 0.05, 0.16, 0.14, 0.22, 0.13, 0.08, 0.04],
+    "DM": [0.08, 0.05, 0.18, 0.10, 0.28, 0.20, 0.06, 0.05],
+    "CM": [0.09, 0.10, 0.24, 0.18, 0.12, 0.10, 0.12, 0.05],
+    "AM": [0.10, 0.16, 0.20, 0.20, 0.05, 0.07, 0.16, 0.06],
+    "W":  [0.20, 0.14, 0.10, 0.22, 0.04, 0.08, 0.16, 0.06],
+    "SS": [0.14, 0.20, 0.13, 0.19, 0.03, 0.09, 0.16, 0.06],
+    "ST": [0.14, 0.26, 0.06, 0.14, 0.02, 0.18, 0.12, 0.08]
+  },
+
+  "outputFactors": {
+    "GK": { "attack": 0.02, "passing": 0.05, "defending": 1.00 },
+    "CB": { "attack": 0.08, "passing": 0.10, "defending": 0.95 },
+    "FB": { "attack": 0.18, "passing": 0.45, "defending": 0.55 },
+    "DM": { "attack": 0.12, "passing": 0.40, "defending": 0.70 },
+    "CM": { "attack": 0.35, "passing": 0.70, "defending": 0.30 },
+    "AM": { "attack": 0.55, "passing": 0.75, "defending": 0.10 },
+    "W":  { "attack": 0.60, "passing": 0.55, "defending": 0.08 },
+    "SS": { "attack": 0.85, "passing": 0.35, "defending": 0.05 },
+    "ST": { "attack": 1.00, "passing": 0.25, "defending": 0.04 }
+  },
+
+  "roles": {
+    "GK": [
+      { "name": "Paredão Imbatível",   "attr": "Def", "min": 92, "defenseMod": 0.20 },
+      { "name": "Goleiro-Líbero",      "attr": "Dri", "min": 75, "defenseMod": 0.10, "assistsMod": 0.10 },
+      { "name": "Reflexo de Gato",     "attr": "Pac", "min": 75, "defenseMod": 0.15 },
+      { "name": "Goleiro Espetacular", "attr": "Ski", "min": 75, "defenseMod": 0.18 },
+      { "name": "Muralha",             "attr": "Def", "min": 0,  "defenseMod": 0.12 }
+    ],
+    "CB": [
+      { "name": "Xerife Implacável",   "attr": "Def", "min": 92, "defenseMod": 0.22, "titleMod": 0.06 },
+      { "name": "Zagueiro-Artilheiro", "attr": "Sho", "min": 70, "goalsMod": 0.35 },
+      { "name": "Zagueiro Moderno",    "attr": "Pac", "min": 78, "defenseMod": 0.10, "goalsMod": 0.05 },
+      { "name": "Zagueiro Ajeitado",   "attr": "Dri", "min": 75, "defenseMod": 0.08, "assistsMod": 0.08 },
+      { "name": "Xerife da Área",      "attr": "Def", "min": 0,  "defenseMod": 0.15 }
+    ],
+    "FB": [
+      { "name": "Foguete de Linha",    "attr": "Pac", "min": 92, "defenseMod": 0.08, "assistsMod": 0.10 },
+      { "name": "Encantador de Linha", "attr": "Dri", "min": 78, "assistsMod": 0.18, "goalsMod": 0.10 },
+      { "name": "Trator",              "attr": "Phy", "min": 85, "defenseMod": 0.15 },
+      { "name": "Ala Artilheiro",      "attr": "Sho", "min": 70, "goalsMod": 0.30 },
+      { "name": "Marcador de Linha",   "attr": "Def", "min": 0,  "defenseMod": 0.10, "assistsMod": 0.06 }
+    ],
+    "DM": [
+      { "name": "O Pitbull",           "attr": "Def", "min": 88, "defenseMod": 0.25, "titleMod": 0.08 },
+      { "name": "O Regente",           "attr": "Pas", "min": 88, "assistsMod": 0.25 },
+      { "name": "Armário de Meio",     "attr": "Phy", "min": 88, "defenseMod": 0.15 },
+      { "name": "Box-to-Box",          "attr": "Dri", "min": 75, "goalsMod": 0.10, "defenseMod": 0.08 },
+      { "name": "Chutão de Fora",      "attr": "Sho", "min": 66, "goalsMod": 0.18 },
+      { "name": "Motorzinho",          "attr": "Def", "min": 0,  "defenseMod": 0.10 }
+    ],
+    "CM": [
+      { "name": "Maestro",             "attr": "Pas", "min": 90, "assistsMod": 0.25 },
+      { "name": "Camisa 10 de Ouro",   "attr": "Dri", "min": 90, "assistsMod": 0.15, "goalsMod": 0.10 },
+      { "name": "Meia Box-to-Box",     "attr": "Def", "min": 78, "defenseMod": 0.15 },
+      { "name": "Canhão do Meio",      "attr": "Sho", "min": 75, "goalsMod": 0.20 },
+      { "name": "Craque de Categoria", "attr": "Ski", "min": 80, "assistsMod": 0.12 },
+      { "name": "Cérebro do Time",     "attr": "Pas", "min": 0,  "assistsMod": 0.10 }
+    ],
+    "AM": [
+      { "name": "O Armador",           "attr": "Pas", "min": 90, "assistsMod": 0.22 },
+      { "name": "Camisa 10 Clássico",  "attr": "Dri", "min": 90, "goalsMod": 0.10, "assistsMod": 0.15 },
+      { "name": "Artista",             "attr": "Ski", "min": 90, "assistsMod": 0.15 },
+      { "name": "Meia-Atacante Matador","attr": "Sho","min": 80, "goalsMod": 0.22 },
+      { "name": "Camisa 10 Combativo", "attr": "Def", "min": 62, "defenseMod": 0.10 },
+      { "name": "De Ligação",          "attr": "Pas", "min": 0,  "assistsMod": 0.12 }
+    ],
+    "W": [
+      { "name": "Driblador Nato",      "attr": "Dri", "min": 92, "assistsMod": 0.12, "goalsMod": 0.08 },
+      { "name": "Encantador de Torcida","attr": "Ski","min": 90, "assistsMod": 0.15 },
+      { "name": "Foguete",             "attr": "Pac", "min": 92, "goalsMod": 0.10 },
+      { "name": "Ponta Matador",       "attr": "Sho", "min": 80, "goalsMod": 0.28 },
+      { "name": "Ponta Armador",       "attr": "Pas", "min": 75, "assistsMod": 0.15 },
+      { "name": "Driblador de Rua",    "attr": "Dri", "min": 0,  "goalsMod": 0.08 }
+    ],
+    "SS": [
+      { "name": "Matador de Área",     "attr": "Sho", "min": 90, "goalsMod": 0.25 },
+      { "name": "Falso 9",             "attr": "Pas", "min": 75, "assistsMod": 0.22, "goalsMod": -0.05 },
+      { "name": "Finalizador Categoria","attr": "Ski","min": 80, "goalsMod": 0.15 },
+      { "name": "Sombra do Camisa 9",  "attr": "Pac", "min": 85, "goalsMod": 0.10 },
+      { "name": "Segundo Atacante",    "attr": "Sho", "min": 0,  "goalsMod": 0.10 }
+    ],
+    "ST": [
+      { "name": "Artilheiro Nato",     "attr": "Sho", "min": 92, "goalsMod": 0.30 },
+      { "name": "Pivô Implacável",     "attr": "Phy", "min": 90, "goalsMod": 0.15 },
+      { "name": "Pivô Criativo",       "attr": "Dri", "min": 75, "assistsMod": 0.15 },
+      { "name": "Artista da Área",     "attr": "Ski", "min": 75, "goalsMod": 0.12 },
+      { "name": "Camisa 9 Clássico",   "attr": "Sho", "min": 0,  "goalsMod": 0.12 }
+    ]
+  },
+
+  "countries": {
+    "Brasil":     { "strength": 8, "leagueGrade": 2, "southAmerican": true,  "places": ["Vila Nova", "Serra Alta", "Rio Manso", "Litoral Sul"] },
+    "Argentina":  { "strength": 7, "leagueGrade": 2, "southAmerican": true,  "places": ["Puerto Bravo", "Las Pampas", "Villa del Sol"] },
+    "Uruguai":    { "strength": 5, "leagueGrade": 1, "southAmerican": true,  "places": ["Costa Dorada", "Punta Alta", "Bahía Norte"] },
+    "Espanha":    { "strength": 6, "leagueGrade": 3, "southAmerican": false, "places": ["Costa Brava", "Sierra Alta", "Vega Dorada"] },
+    "Inglaterra": { "strength": 6, "leagueGrade": 3, "southAmerican": false, "places": ["Riverside", "Northgate", "Kingswood"] },
+    "Itália":     { "strength": 6, "leagueGrade": 3, "southAmerican": false, "places": ["Monte Rosso", "Porto Chiaro", "Lago Blu"] },
+    "Alemanha":   { "strength": 7, "leagueGrade": 3, "southAmerican": false, "places": ["Rheinfeld", "Bergtal", "Waldstadt"] },
+    "França":     { "strength": 7, "leagueGrade": 3, "southAmerican": false, "places": ["Val d'Or", "Mont Clair", "Beau Rivage"] },
+    "Portugal":   { "strength": 5, "leagueGrade": 2, "southAmerican": false, "places": ["Vale do Tejo", "Costa Norte", "Vila Real"] },
+    "Holanda":    { "strength": 5, "leagueGrade": 2, "southAmerican": false, "places": ["Zeewijk", "Duinpark", "Meerstad"] }
+  },
+
+  "tiers": [
+    { "tier": 1, "target": 45, "continentalChance": 0.00 },
+    { "tier": 2, "target": 58, "continentalChance": 0.00 },
+    { "tier": 3, "target": 70, "continentalChance": 0.12 },
+    { "tier": 4, "target": 80, "continentalChance": 0.22 },
+    { "tier": 5, "target": 92, "continentalChance": 0.34 }
+  ],
+
+  "curve": {
+    "startAge": 16,
+    "minRetireAge": 32,
+    "maxRetireAge": 38,
+    "minPeakAge": 26,
+    "maxPeakAge": 29,
+    "growthRate": 0.28,
+    "minPotentialGap": 14,
+    "maxPotentialGap": 27
+  }
+}
