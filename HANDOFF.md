@@ -56,22 +56,25 @@ Varzea.Engine/            class library pura — compila OK
 Varzea.MonteCarlo/        runner: N carreiras → 3 critérios de aceite → rarity-weights.json
 Varzea.Engine.Tests/      determinismo + equivalência AdvanceCareer (o que sustenta ranking e replay)
 Varzea.Api/               ASP.NET Core Minimal API — draft/position/advance/save (ver secção 7.5)
+Varzea.Data/              EF Core + Npgsql — Player/CareerSlot/Achievement (ver secção 7.6)
+Varzea.Web/               React + TS (Vite) — front funcional de ponta a ponta (ver secção 7.7)
 tools/montecarlo_mirror.py  espelho Python — BANCO DE PROVA, não é produto
 ```
 
 ### Estado de build
-Todos os projetos compilam e têm testes passando (`dotnet build Varzea.slnx` / `dotnet test
-Varzea.Engine.Tests`). O `Varzea.sln` original nunca chegou a faltar de verdade — o
-repositório já tinha `Varzea.slnx` (formato novo do VS) quando a sessão que escreveu esta
-versão do HANDOFF começou; a suspeita de CS5001 registrada numa versão anterior deste
-documento não reproduziu.
+Todos os projetos .NET compilam e têm testes passando (`dotnet build Varzea.slnx` /
+`dotnet test Varzea.Engine.Tests`). `Varzea.Web` builda e type-checa limpo (`npm run
+build` em `Varzea.Web/`) e foi testado rodando de verdade num navegador, não só
+compilado. O `Varzea.sln` original nunca chegou a faltar de verdade — o repositório já
+tinha `Varzea.slnx` (formato novo do VS) quando a sessão que escreveu esta versão do
+HANDOFF começou; a suspeita de CS5001 registrada numa versão anterior deste documento
+não reproduziu.
 
-Há uma quarta branch com trabalho não mesclado em `main`:
-- `feature/postgres-persistence` — `Varzea.Data` (EF Core + Npgsql), ver secção 7.6.
-  **Nunca rodou contra um Postgres de verdade.**
-- `feature/dev-environment-setup` (esta branch) — `docker-compose.yml` pra subir esse
-  Postgres localmente, e `.nvmrc` fixando Node 20 (o ambiente onde isto foi escrito tinha
-  Node v16.16, EOL).
+`feature/postgres-persistence` e `feature/dev-environment-setup` já foram mescladas em
+`main` (PRs #1 e #2). Esta branch (`feature/react-frontend`) é a única ainda não
+mesclada — depende de decidir o que fazer com o achado da secção 7.7 (`/careers/save`
+disparando sozinho) antes de ligar autenticação de verdade, mas isso não bloqueia mesclar
+o front como está hoje (a chamada automática é inofensiva sem `PlayerId`).
 
 ### Aviso sobre a calibração
 A secção 5 foi calibrada com o espelho Python E confirmada batendo com o motor C# via
@@ -96,7 +99,7 @@ Se os testes não encontrarem o `balance.json`, conferir se `Varzea.Engine.Tests
 `Varzea.Api.csproj` ainda têm o `<None Include>` que copia `Ruleset/*.json` pro output —
 os dois já vêm assim, é só pra outros projetos novos que precisem do ruleset em runtime.
 
-### Postgres local (pra testar a branch `feature/postgres-persistence`)
+### Postgres local (`Varzea.Data` já está em `main` — só falta o banco de verdade)
 
 Precisa de [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado —
 este repositório não traz isso, só o `docker-compose.yml` que sobe o banco.
@@ -105,7 +108,6 @@ este repositório não traz isso, só o `docker-compose.yml` que sobe o banco.
 docker compose up -d          # Postgres 16 em localhost:5432 (usuário/senha/db: varzea)
 docker compose ps             # confirmar "healthy" antes de migrar
 
-git checkout feature/postgres-persistence
 dotnet ef database update --project Varzea.Data \
   -- --connection "Host=localhost;Database=varzea;Username=varzea;Password=varzea-dev-only"
 ```
@@ -116,12 +118,20 @@ credenciais reais nesse arquivo fora de dev local) ou via variável de ambiente
 `ConnectionStrings__Varzea`. **Isto nunca foi executado** — confirmar que a migration
 aplica sem erro antes de assumir que o schema da secção 7.6 está correto.
 
-### Node (pra quando começar o front React, passo 7)
+### Front React (`Varzea.Web`)
 
-O ambiente onde a maior parte deste HANDOFF foi escrita tinha Node v16.16 (EOL desde
-2023) — Vite e as versões atuais de React não garantem funcionar nisso. `.nvmrc` na raiz
-fixa Node 20 (LTS). Com `nvm` instalado: `nvm install && nvm use`. Sem `nvm`, instalar
-qualquer Node ≥ 20 LTS direto do site oficial.
+Node 24 (`.nvmrc` na raiz — `nvm install && nvm use`, ou instalar via
+`winget install OpenJS.NodeJS.LTS` no Windows).
+
+```bash
+npm --prefix Varzea.Web install
+npm --prefix Varzea.Web run dev     # http://localhost:5173, proxy pro Api em :52525
+```
+
+Precisa da `Varzea.Api` rodando em paralelo (`dotnet run --project Varzea.Api`) — o Vite
+só faz proxy de `/careers`, `/rankings`, `/challenge` e `/meta`, não sobe a API sozinho.
+Testado de ponta a ponta num navegador real (não só `npm run build`); ver secção 7.7 pro
+que ficou de fora de propósito (modo jogo a jogo, autenticação).
 
 ---
 
@@ -270,16 +280,37 @@ essa propriedade que se perderia.
    **Reclassificado como pós-MVP** (ver secção 9) — o utilizador decidiu que o MVP não
    tem login, então não há `PlayerId` real pra persistir nada ainda. O código fica pronto
    e testado, mas inerte até existir autenticação.
-7. **Front React** — `Varzea.Web`, funcional de ponta a ponta, testado num navegador
-   real. Está na branch `feature/react-frontend`
-   ([abrir PR](https://github.com/emersonr02/VarzeaFC/pull/new/feature/react-frontend)),
-   ainda não mesclada. Detalhes completos na branch (visual portado do
-   `varzea-lendas.html`, ordem da final corrigida, vereditos recalibrados, 3 extensões
-   pequenas na API). Falta: mesclar o PR, e depois disso aplicar as mudanças da
-   secção 9 (Bloco 1 muda draft/pontuação/prêmios, o que o front já mostra).
+7. **Front React** — `Varzea.Web`, Vite + React 19 + TS. **Mesclado em `main`.**
+   Funcional de ponta a ponta, testado no navegador (não só compilado): home → setup
+   (nome + país) → draft (8 rodadas) → posição → figurinha → modo → simulação temporada a
+   temporada → resultado → álbum. Visual portado quase 1:1 do `varzea-lendas.html`.
+
+   **Diferenças em relação ao POC**, todas deliberadas:
+   - A simulação é 100% a API real, não `Math.random()` no cliente. Nomes de clube,
+     adversário e narração "ao vivo" das finais continuam fabricados no cliente (cosmético
+     puro, como no POC) — mas os NÚMEROS (gols, títulos, score) vêm sempre do servidor.
+   - **Ordem da final corrigida**: finais aparecem ANTES do resumo da liga na mesma
+     temporada (`src/data/clips.ts`), resolvendo o defeito que a secção 8 apontava no POC.
+   - **Vereditos recalibrados**: os limiares do POC (min:180...1750) eram pra uma fórmula
+     de score totalmente diferente. Os novos (`src/data/verdicts.ts`) usam a escala real
+     do motor (mediana ~100, p99 ~420, máx. observado ~630-720 — secção 5).
+   - **Modo "Jogo a Jogo" adiado** (cartão "Em breve"): o motor só expõe agregados por
+     temporada, não jogo a jogo — decisão de escopo deliberada, não esquecimento.
+   - **Álbum é só `localStorage`** por enquanto — não fala com Postgres nem autenticação.
+     `/careers/save` já aceita `PlayerId` opcional, mas o front nunca o envia hoje.
+
+   **API ganhou 3 extensões pequenas** pra sustentar o front (todas testadas):
+   - `GET /meta` — países válidos, direto do `balance.json` (não hardcoded no front).
+   - `DraftCompleteResponse.Potentials` — potencial nas 9 posições de uma vez.
+   - `SaveResponse.TitleCounts` e `SaveResponse.Totals` — para o veredito final.
+
+   **Achado no caminho, não corrigido:** `Result.tsx` chama `/careers/save`
+   automaticamente ao montar a tela — hoje inofensivo (`PlayerId` nunca enviado), mas
+   antes de ligar autenticação é obrigatório separar "calcular e mostrar" de "confirmar
+   e guardar" (a chamada automática rodaria duas vezes em dev por causa do StrictMode).
 8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado**, e agora explicitamente
    pós-MVP junto com o Postgres (secção 9) — não faz sentido gerenciar slots antes de
-   existir login.
+   existir login. O álbum actual do passo 7 é um substituto client-side temporário.
 
 ---
 

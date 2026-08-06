@@ -43,6 +43,9 @@ var tokens = new CareerTokenService(tokenSecret);
 
 var app = builder.Build();
 
+app.MapGet("/meta", () =>
+    Results.Ok(new MetaResponse(rules.Version, rules.Countries.Keys.OrderBy(c => c).ToList())));
+
 app.MapPost("/careers/start", (StartRequest? req) =>
 {
     // Seed sempre gerada pelo servidor para carreiras normais — aceitar uma seed do
@@ -68,7 +71,10 @@ app.MapPost("/careers/draft", (DraftRequest req) =>
     if (picks.Length == 8)
     {
         int[] attrs = simulator.ResolveDraft(state.Seed, picks);
-        return Results.Ok(new DraftCompleteResponse(tokens.Issue(next), attrs));
+        var potentials = Enum.GetValues<Pos>()
+            .Select(p => new PositionPotential(p, simulator.OverallFor(attrs, p)))
+            .ToList();
+        return Results.Ok(new DraftCompleteResponse(tokens.Issue(next), attrs, potentials));
     }
 
     var candidates = simulator.PreviewNextDraftRound(state.Seed, picks);
@@ -133,9 +139,13 @@ app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
     // GetService (não injeção automática do parâmetro) porque o DbContext só existe
     // registrado quando há ConnectionStrings:Varzea — sem isso, null aqui é o caminho
     // normal (dev sem Postgres), não um erro.
+    var totals = new CareerTotals(
+        result.PeakOverall, result.Seasons, result.TotalGoals, result.TotalAssists,
+        result.TotalTackles, result.TotalCleanSheets, result.TotalCaps);
+
     var db = http.RequestServices.GetService<VarzeaDbContext>();
     if (db is null || req.PlayerId is not { } playerId)
-        return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: null));
+        return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: null, result.TitleCounts, totals));
 
     if (await db.Players.FindAsync(playerId) is null)
         db.Players.Add(new Player { Id = playerId, CreatedAt = DateTimeOffset.UtcNow });
@@ -183,7 +193,7 @@ app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
     });
     await db.SaveChangesAsync();
 
-    return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: slotIndex));
+    return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: slotIndex, result.TitleCounts, totals));
 });
 
 app.MapGet("/rankings/{period}", (string period) =>
