@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Varzea.Api/Varzea.Api.csproj" />
   <Project Path="Varzea.Engine.Tests/Varzea.Engine.Tests.csproj" />
   <Project Path="Varzea.Engine/Varzea.Engine.csproj" />
   <Project Path="Varzea.MonteCarlo/Varzea.MonteCarlo.csproj" />

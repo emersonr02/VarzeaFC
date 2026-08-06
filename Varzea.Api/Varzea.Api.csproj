@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Varzea.Engine\Varzea.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Varzea.Engine\Ruleset\balance.json" Link="Ruleset\balance.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Varzea.Engine\Ruleset\rarity-weights.json" Link="Ruleset\rarity-weights.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

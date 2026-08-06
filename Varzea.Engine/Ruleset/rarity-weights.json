@@ -1,0 +1,48 @@
+{
+  "RulesetVersion": "1.0.0",
+  "SampleSize": 10000,
+  "Frequency": {
+    "LeagueTop5": 0.4372,
+    "LeagueMid": 0.3501,
+    "LeagueMinor": 0.089,
+    "DomesticCup": 0.6528,
+    "ContinentalSecondary": 0.2426,
+    "ContinentalPrimary": 0.2989,
+    "WorldCup": 0.0872,
+    "BallonDOr": 0.0562,
+    "TeamOfTheYear": 0.3113
+  },
+  "Weight": {
+    "LeagueTop5": 3.42,
+    "LeagueMid": 4.34,
+    "LeagueMinor": 10,
+    "DomesticCup": 1.76,
+    "ContinentalSecondary": 5.85,
+    "ContinentalPrimary": 4.99,
+    "WorldCup": 10.08,
+    "BallonDOr": 11.9,
+    "TeamOfTheYear": 4.82
+  },
+  "ProductionP50": {
+    "SS": 107.03558459725393,
+    "ST": 107.14669269084904,
+    "GK": 67.36730007488883,
+    "AM": 111.40590707268389,
+    "CB": 82.21690543901352,
+    "CM": 108.40396252407331,
+    "DM": 92.9140353020064,
+    "W": 106.74441569388148,
+    "FB": 97.60421146939824
+  },
+  "ProductionP95": {
+    "SS": 119.4091410696157,
+    "ST": 119.72532145685348,
+    "GK": 81.80300817493284,
+    "AM": 122.93188711499855,
+    "CB": 94.3023949712522,
+    "CM": 120.35145734934616,
+    "DM": 104.30632404145047,
+    "W": 117.40107149801355,
+    "FB": 108.28892010310047
+  }
+}

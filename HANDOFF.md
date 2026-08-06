@@ -152,11 +152,14 @@ Sem esse gate o prêmio volta a ser refém de quem faz gol, e goleiro/zagueiro s
 
 **Qualquer alteração de balanceamento tem de voltar a passar nos três critérios.**
 
-### Ponto em aberto
-O utilizador pediu pesos "quase equivalentes" entre Bola de Ouro e Equipe do Ano.
-A raridade dá **12,0 vs 4,8** (2,5×). Forçar equivalência é possível, mas abandona a
-derivação por raridade nesse ponto — e faz com que 6 Equipas do Ano passem 2 Bolas de Ouro.
-Decisão ainda não tomada.
+### Ponto em aberto — resolvido
+O utilizador tinha pedido pesos "quase equivalentes" entre Bola de Ouro e Equipe do Ano.
+A raridade dá **12,0 vs 4,8** (2,5×). **Decisão: manter a derivação por raridade, sem forçar
+equivalência.** Forçar um valor fixo abandona a regra travada da seção 2 (pesos derivados,
+nunca escritos à mão) justamente no prêmio que trava o topo do ranking, e cria o furo que a
+seção 5 já apontava: 6 Equipas do Ano passariam 2 Bolas de Ouro. Se o rebalanceamento tornar
+a Bola de Ouro mais fácil de conseguir, o peso dela já cai sozinho no próximo recálculo — é
+essa propriedade que se perderia.
 
 ---
 
@@ -174,27 +177,64 @@ Decisão ainda não tomada.
 
 ## 7. Próximos passos, por ordem
 
-1. **Resolver o CS5001** e pôr os três projetos a compilar.
-2. **`dotnet test`** — confirmar determinismo (1000 execuções da mesma receita → hash idêntico).
-3. **Correr o Monte Carlo em C#** e comparar com os números da secção 5.
-   Divergência significativa = C# e espelho fora de sincronia.
-4. Decidir o ponto em aberto da secção 5 (pesos Bola de Ouro vs Equipe do Ano).
-5. **API** — ASP.NET Core Minimal API:
-   - `POST /careers/start` → seed + as 8 rodadas do draft
-   - `POST /careers/advance` → recebe decisão, devolve **temporada inteira resolvida**
-     (os ~38 jogos e os eventos da final de uma vez; o cliente só anima o que já recebeu)
-   - `POST /careers/save` → valida re-simulando, calcula score, ocupa slot
-   - `GET /rankings/{weekly|monthly|all}`
-   - `GET /challenge/annual` → seed fixa do período
-   
-   São ~5–8 chamadas por carreira, não 760 — a unidade de trabalho é
-   "simula até à próxima decisão", não "simula um jogo".
+1. ~~Resolver o CS5001 e pôr os três projetos a compilar.~~ **Feito** — os três compilam
+   (`Varzea.slnx` e `Varzea.MonteCarlo/Program.cs` já estavam no repositório).
+2. ~~`dotnet test` — confirmar determinismo.~~ **Feito** —
+   [Varzea.Engine.Tests/DeterminismTests.cs](Varzea.Engine.Tests/DeterminismTests.cs):
+   1000 execuções × 3 seeds, hash SHA-256 idêntico em todas.
+3. ~~Correr o Monte Carlo em C# e comparar com a secção 5.~~ **Feito, com correção** —
+   o `Program.cs` tinha dois bugs de medição (arredondava score a inteiro no Critério 1,
+   e media Critério 3 na amostra inteira em vez do top 10%), corrigidos. Depois da correção
+   os três critérios batem com o espelho Python: motor e espelho estão em sincronia.
+4. ~~Decidir o ponto em aberto da secção 5.~~ **Feito** — ver secção 5, mantida a derivação
+   por raridade (12,0 vs 4,8), sem forçar equivalência.
+5. **API** — `Varzea.Api`, ASP.NET Core Minimal API. **Parcialmente feito.**
+
+   **Mudança em relação ao design original:** o draft **não pode** ser revelado em 8
+   rodadas de uma vez só no `/careers/start`, porque o pool do `CareerSimulator` depende
+   das escolhas reais (a lenda escolhida sai, as outras duas voltam — ver
+   `CareerSimulator.PreviewNextDraftRound`). Decisão tomada com o utilizador: draft
+   rodada-a-rodada, um novo endpoint por rodada, sem mexer no motor nem na calibração.
+
+   Implementado e testado manualmente (start → 8× draft → position → save, via curl):
+   - `POST /careers/start` → gera a seed no servidor (nunca aceita seed do cliente numa
+     carreira normal — senão dava pra buscar offline uma seed "sortuda" antes de jogar)
+     e devolve a rodada 1 do draft.
+   - `POST /careers/draft` → uma rodada por chamada; a rodada 8 fecha o draft e devolve
+     os 8 atributos resolvidos.
+   - `POST /careers/position` → trava a posição, devolve potencial e role.
+   - `POST /careers/save` → recebe país + as 12 decisões de transferência, re-simula a
+     receita inteira do zero no servidor e calcula o score — o cliente nunca manda score.
+   - `GET /challenge/annual` → seed determinística por ano via `Pcg32.Derive(0, "annual-challenge", ano)`.
+   - `GET /rankings/{period}` → **stub, 501** (depende do passo 6).
+
+   Estado entre chamadas viaja num `CareerState` assinado com HMAC (`CareerTokenService`)
+   em vez de sessão no servidor — combina com "receita, nunca placar": o servidor não
+   guarda nada até o `/careers/save`. Testado que um token adulterado dá 401.
+
+   **Dois furos abertos, não resolvidos ainda:**
+   - `POST /careers/advance` (temporada inteira por chamada, decisão a decisão) **não
+     existe.** O `CareerSimulator.SimulateCareer` roda a carreira inteira de uma vez a
+     partir de um `bool[12]` de transferências decidido *antecipadamly* — ele não pausa
+     no meio para perguntar "aceita a oferta?". Servir esse fluxo interativo como o
+     HANDOFF descreve exige transformar o `for` de `SimulateCareer` numa máquina de
+     estados retomável (parar exatamente numa oferta de transferência, devolver a
+     temporada, continuar na próxima chamada) — refactor de motor, não só de API.
+     Por ora `/careers/save` exige as 12 decisões completas de uma vez.
+   - A seed do desafio anual é **pública e determinística por ano**. Como o algoritmo é
+     conhecido (é o próprio produto), alguém pode rodar o motor offline com essa seed e
+     testar picks/transferências até achar o resultado ótimo antes de jogar "de verdade" —
+     o oposto do que a secção 2 pede ("se for farmável não vale nada"). Isso não foi
+     corrigido; precisa de decisão (ex.: só revelar a seed no fim do período, ou commit-reveal).
 6. **Postgres.** Tabela de conquistas com `UNIQUE (user_id, period_type, period_key)` —
    idempotência do job de fecho de período vem daí. Snapshot imutável no fecho,
    nunca derivar ranking em tempo real (senão um rebalanceamento reescreve o passado).
    Carreira referenciada por conquista nunca pode ser apagada, só arquivada.
-7. **Front React** consumindo.
-8. Slots de 10 geríveis + ecrã de palmarès.
+   **Não iniciado** — sem Postgres/docker disponíveis no ambiente onde isto foi escrito
+   para testar de verdade; confirmar antes de gerar migrations às cegas.
+7. **Front React** consumindo. **Não iniciado** — o ambiente tinha Node v16.16 (EOL),
+   vale checar/atualizar antes de escolher tooling (Vite moderno pede Node 18+).
+8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado.**
 
 ---
 

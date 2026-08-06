@@ -29,27 +29,57 @@ public sealed class CareerSimulator
     {
         if (picks.Length != 8) throw new ArgumentException("draft precisa de 8 escolhas");
 
-        var rng = Pcg32.Derive(seed, "draft");
-        var pool = new List<Legend>(_legends);
+        var (rng, pool) = ReplayDraft(seed, Array.Empty<int>());
         var attrs = new int[8];
-
         for (int round = 0; round < 8; round++)
         {
-            var candidates = new List<Legend>();
-            var working = new List<Legend>(pool);
-            for (int i = 0; i < 3 && working.Count > 0; i++)
-            {
-                int idx = rng.NextInt(0, working.Count - 1);
-                candidates.Add(working[idx]);
-                working.RemoveAt(idx);
-            }
-
+            var candidates = DrawCandidates(rng, pool);
             int choice = Math.Clamp(picks[round], 0, candidates.Count - 1);
             var chosen = candidates[choice];
             attrs[round] = chosen.Get((Attr)round);
             pool.Remove(chosen);
         }
         return attrs;
+    }
+
+    /// <summary>
+    /// As 3 lendas da PRÓXIMA rodada (índice = picksSoFar.Length), dado o que já foi
+    /// escolhido. Existe porque o pool depende das escolhas reais: a lenda tirada sai
+    /// do pool, as outras duas voltam — então a API não pode revelar as 8 rodadas de
+    /// uma vez, só uma rodada por chamada (ver HANDOFF §7.5).
+    /// </summary>
+    public IReadOnlyList<Legend> PreviewNextDraftRound(ulong seed, int[] picksSoFar)
+    {
+        if (picksSoFar.Length >= 8) throw new ArgumentException("draft já tem as 8 escolhas");
+        var (rng, pool) = ReplayDraft(seed, picksSoFar);
+        return DrawCandidates(rng, pool);
+    }
+
+    /// <summary>Rebobina o RNG e o pool até o ponto imediatamente após as escolhas dadas.</summary>
+    private (Pcg32 Rng, List<Legend> Pool) ReplayDraft(ulong seed, int[] picksSoFar)
+    {
+        var rng = Pcg32.Derive(seed, "draft");
+        var pool = new List<Legend>(_legends);
+        foreach (var pick in picksSoFar)
+        {
+            var candidates = DrawCandidates(rng, pool);
+            int choice = Math.Clamp(pick, 0, candidates.Count - 1);
+            pool.Remove(candidates[choice]);
+        }
+        return (rng, pool);
+    }
+
+    private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
+    {
+        var working = new List<Legend>(pool);
+        var candidates = new List<Legend>();
+        for (int i = 0; i < 3 && working.Count > 0; i++)
+        {
+            int idx = rng.NextInt(0, working.Count - 1);
+            candidates.Add(working[idx]);
+            working.RemoveAt(idx);
+        }
+        return candidates;
     }
 
     /// <summary>
