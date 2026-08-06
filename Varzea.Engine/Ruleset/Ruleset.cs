@@ -80,6 +80,13 @@ public sealed class CountryDef
     /// <summary>Qualidade da liga doméstica: 3=top5, 2=média, 1=menor.</summary>
     public int LeagueGrade { get; set; }
     public bool SouthAmerican { get; set; }
+    /// <summary>
+    /// Multiplicador autoral (não derivado por frequência — exceção deliberada, mesma
+    /// lógica da seed fixa da Bola de Ouro anual). Aplicado só aos títulos domésticos
+    /// (liga + copa nacional) no CareerScorer: ser campeão inglês vale mais que ser
+    /// campeão uruguaio, mesmo quando as duas ligas caem no mesmo LeagueGrade.
+    /// </summary>
+    public double LeaguePrestige { get; set; } = 1.0;
     public List<string> Places { get; set; } = new();
 }
 

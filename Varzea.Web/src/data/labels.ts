@@ -49,6 +49,8 @@ export const TITLE_LABEL: Record<TitleKind, string> = {
   WorldCup: "Copa do Mundo",
   BallonDOr: "Bola de Ouro",
   TeamOfTheYear: "Equipe do Ano",
+  SouthAmericanTeamOfTheYear: "Equipe do Ano da América",
+  KingOfAmerica: "Rei da América",
 };
 
 export const INJURY_LABEL: Record<InjurySeverity, string | null> = {

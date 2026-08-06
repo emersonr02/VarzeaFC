@@ -43,7 +43,8 @@ public static class Program
         }
 
         var weights = RarityCalibrator.Calibrate(sample, rules.Version);
-        var scorer = new CareerScorer(weights);
+        var leaguePrestige = rules.Countries.ToDictionary(kv => kv.Key, kv => kv.Value.LeaguePrestige);
+        var scorer = new CareerScorer(weights, leaguePrestige);
         var scored = sample.Select(c => (Career: c, Score: scorer.Score(c))).ToList();
 
         PrintRarity(weights);

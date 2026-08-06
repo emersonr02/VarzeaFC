@@ -14,7 +14,9 @@ public enum TitleKind
     ContinentalPrimary,   // Champions / Libertadores
     WorldCup,
     BallonDOr,
-    TeamOfTheYear   // melhor da sua posição no ano — dá paridade entre posições por construção
+    TeamOfTheYear,          // melhor da sua posição no ano — dá paridade entre posições por construção
+    SouthAmericanTeamOfTheYear, // análogo ao TeamOfTheYear, só pra ligas southAmerican (Roadmap §9 Bloco 1)
+    KingOfAmerica           // "Rei da América" — análogo ao BallonDOr, gated pelo SouthAmericanTeamOfTheYear
 }
 
 public sealed record Legend(string Name, int[] Ratings)

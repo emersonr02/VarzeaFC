@@ -268,6 +268,8 @@ function AwardsClip({ season }: { season: SeasonResult }) {
   const lines: string[] = [];
   if (season.titles.includes("TeamOfTheYear") || season.inTeamOfTheYear) lines.push(`⭐ ${TITLE_LABEL.TeamOfTheYear} — o melhor da sua posição na temporada.`);
   if (season.titles.includes("BallonDOr")) lines.push(`🏆 BOLA DE OURO! O melhor jogador do mundo na temporada.`);
+  if (season.titles.includes("SouthAmericanTeamOfTheYear")) lines.push(`⭐ ${TITLE_LABEL.SouthAmericanTeamOfTheYear} — o melhor da sua posição no continente.`);
+  if (season.titles.includes("KingOfAmerica")) lines.push(`👑 REI DA AMÉRICA! O melhor jogador do continente na temporada.`);
   return (
     <div className="clip clip-award">
       <div className="season-tag">Premiação · {season.age} anos</div>

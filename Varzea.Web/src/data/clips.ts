@@ -21,7 +21,8 @@ export function buildClipsForSeason(season: SeasonResult): ClipData[] {
     if (season.titles.includes(title)) clips.push({ kind: "final", season, title });
   }
   clips.push({ kind: "season", season });
-  if (season.titles.includes("BallonDOr") || season.titles.includes("TeamOfTheYear") || season.inTeamOfTheYear) {
+  if (season.titles.includes("BallonDOr") || season.titles.includes("TeamOfTheYear") || season.inTeamOfTheYear
+    || season.titles.includes("KingOfAmerica") || season.titles.includes("SouthAmericanTeamOfTheYear")) {
     clips.push({ kind: "awards", season });
   }
   if (season.injury === "CareerEnding") {

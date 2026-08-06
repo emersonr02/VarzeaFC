@@ -8,7 +8,8 @@ export type InjurySeverity = "None" | "Minor" | "Moderate" | "Severe" | "CareerE
 export type TitleKind =
   | "LeagueTop5" | "LeagueMid" | "LeagueMinor" | "DomesticCup"
   | "ContinentalSecondary" | "ContinentalPrimary" | "WorldCup"
-  | "BallonDOr" | "TeamOfTheYear";
+  | "BallonDOr" | "TeamOfTheYear"
+  | "SouthAmericanTeamOfTheYear" | "KingOfAmerica";
 
 export interface MetaResponse {
   rulesetVersion: string;

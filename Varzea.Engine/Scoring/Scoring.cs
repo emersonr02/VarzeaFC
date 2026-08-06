@@ -93,26 +93,40 @@ public static class RarityCalibrator
 public sealed class CareerScorer
 {
     private readonly RarityWeights _w;
+    private readonly IReadOnlyDictionary<string, double> _leaguePrestige;
 
     // teto por categoria: impede empilhar 12 ligas médias e passar quem ganhou 3 Champions
-    // valores calibrados em Monte Carlo (10k carreiras) para bater 60/25/10/5
+    // valores calibrados em Monte Carlo (10k carreiras) para bater 60/25/10/5.
+    // AwardScale/AwardCap recalibrados no Roadmap §9 Bloco 1: dois prêmios individuais
+    // novos (Rei da América, Equipe do Ano da América) empilham na mesma carreira de
+    // elite sul-americana junto com BallonDOr/TeamOfTheYear — sem essa redução o bloco
+    // de prêmios passava a dominar o top 10% (~50% medido, alvo ~25%).
     private const double TitleScale = 4.4;
-    private const double AwardScale = 5.0;
+    private const double AwardScale = 2.6;
     private const double TitleCap = 420;
-    private const double AwardCap = 300;
+    private const double AwardCap = 220;
     private const double ProductionCap = 28;
     private const double PeakCap = 7.6;
 
-    public CareerScorer(RarityWeights w) => _w = w;
+    /// <param name="leaguePrestige">País → multiplicador autoral (GameRuleset.Countries[x].LeaguePrestige),
+    /// aplicado só aos títulos domésticos. Ver HANDOFF §9 Bloco 1.</param>
+    public CareerScorer(RarityWeights w, IReadOnlyDictionary<string, double>? leaguePrestige = null)
+    {
+        _w = w;
+        _leaguePrestige = leaguePrestige ?? new Dictionary<string, double>();
+    }
 
     public ScoreBreakdown Score(CareerResult c)
     {
         double titles = 0, awards = 0;
+        double prestige = _leaguePrestige.GetValueOrDefault(c.Recipe.Country, 1.0);
 
         foreach (var kv in c.TitleCounts)
         {
             double v = _w.WeightOf(kv.Key) * kv.Value;
-            if (IsIndividualAward(kv.Key)) awards += v; else titles += v;
+            if (IsIndividualAward(kv.Key)) awards += v;
+            else if (IsDomesticTitle(kv.Key)) titles += v * prestige;
+            else titles += v;
         }
 
         titles = Math.Min(titles * TitleScale, TitleCap);
@@ -140,7 +154,14 @@ public sealed class CareerScorer
     }
 
     private static bool IsIndividualAward(TitleKind k) =>
-k is TitleKind.BallonDOr or TitleKind.TeamOfTheYear;
+        k is TitleKind.BallonDOr or TitleKind.TeamOfTheYear
+          or TitleKind.KingOfAmerica or TitleKind.SouthAmericanTeamOfTheYear;
+
+    /// <summary>Títulos que vêm da liga doméstica do jogador — únicos afetados pelo
+    /// multiplicador de prestígio de país (continental/seleção já são globais por
+    /// natureza, e os prêmios individuais já são gated por LeagueGrade no motor).</summary>
+    private static bool IsDomesticTitle(TitleKind k) =>
+        k is TitleKind.LeagueTop5 or TitleKind.LeagueMid or TitleKind.LeagueMinor or TitleKind.DomesticCup;
 }
 
 public sealed class ScoreBreakdown

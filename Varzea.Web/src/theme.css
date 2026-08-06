@@ -95,7 +95,7 @@ body {
 .attr-banner .big { font-family: var(--font-d); color: var(--gold); font-size: clamp(30px, 8vw, 44px); text-transform: uppercase; line-height: 1; }
 
 .legend-row { display: grid; grid-template-columns: 1fr; gap: 14px; }
-@media (min-width: 640px) { .legend-row { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 640px) { .legend-row { grid-template-columns: repeat(2, 1fr); } }
 .legend-card { background: var(--paper); border-radius: 10px; padding: 16px 14px; text-align: center; cursor: pointer; border: 3px solid transparent; position: relative; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.22), 0 10px 16px var(--shadow); transition: transform 0.12s ease; }
 .legend-card:hover { border-color: var(--gold-deep); transform: translateY(-2px); }
 .legend-card:active { transform: translateY(3px); }

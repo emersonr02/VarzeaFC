@@ -38,7 +38,8 @@ string tokenSecret = builder.Configuration["Varzea:TokenSecret"]
 var rules = GameRuleset.LoadFromFile(rulesPath);
 var simulator = new CareerSimulator(rules);
 var weights = RarityWeights.FromJson(File.ReadAllText(weightsPath));
-var scorer = new CareerScorer(weights);
+var leaguePrestige = rules.Countries.ToDictionary(kv => kv.Key, kv => kv.Value.LeaguePrestige);
+var scorer = new CareerScorer(weights, leaguePrestige);
 var tokens = new CareerTokenService(tokenSecret);
 
 var app = builder.Build();

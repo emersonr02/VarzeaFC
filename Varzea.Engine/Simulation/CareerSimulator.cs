@@ -69,11 +69,15 @@ public sealed class CareerSimulator
         return (rng, pool);
     }
 
+    /// <summary>Candidatos por rodada de draft. 2, não 3 (Roadmap §9 Bloco 1) — decisão
+    /// de produto, escolha mais tensa e rápida.</summary>
+    private const int DraftCandidatesPerRound = 2;
+
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
         var working = new List<Legend>(pool);
         var candidates = new List<Legend>();
-        for (int i = 0; i < 3 && working.Count > 0; i++)
+        for (int i = 0; i < DraftCandidatesPerRound && working.Count > 0; i++)
         {
             int idx = rng.NextInt(0, working.Count - 1);
             candidates.Add(working[idx]);
@@ -250,11 +254,23 @@ public sealed class CareerSimulator
             // Equipe do Ano: melhor de cada posição. A chance NÃO depende de gols nem
             // de desarmes, só de quão acima do nível mundial o jogador está — por isso
             // goleiro e zagueiro competem em pé de igualdade com atacante.
+            //
+            // Gated por força da liga (Roadmap §9 Bloco 1): fora do top-5 europeu a
+            // chance é multiplicada por um fator << 1. Como a Bola de Ouro só concorre
+            // quem entrou na Equipe do Ano, o efeito composto já deixa a Bola de Ouro
+            // "quase nunca" pra ligas de grade 1 sem precisar de outro gate separado.
+            double leagueGradeAwardFactor = country.LeagueGrade switch
+            {
+                3 => 1.00,
+                2 => 0.35,
+                _ => 0.10
+            };
+
             bool toty = false;
-            double totyChance = Math.Clamp((overall - 84) / 38.0
+            double totyChance = Math.Clamp(((overall - 84) / 38.0
                 + (season.LeaguePosition == 1 ? 0.06 : 0)
                 + (season.Titles.Contains(TitleKind.ContinentalPrimary) ? 0.05 : 0)
-                + (season.Titles.Contains(TitleKind.WorldCup) ? 0.04 : 0), 0, 0.40);
+                + (season.Titles.Contains(TitleKind.WorldCup) ? 0.04 : 0)) * leagueGradeAwardFactor, 0, 0.40);
             if (rng.Chance(totyChance))
             {
                 toty = true;
@@ -266,15 +282,48 @@ public sealed class CareerSimulator
             // Sem esse gate o prêmio volta a ser refém de quem faz gol.
             if (toty)
             {
-                double wc = Math.Clamp((overall - 88) / 50.0
+                double wc = Math.Clamp(((overall - 88) / 50.0
                     + (season.LeaguePosition == 1 ? 0.10 : 0)
                     + (season.Titles.Contains(TitleKind.ContinentalPrimary) ? 0.14 : 0)
                     + (season.Titles.Contains(TitleKind.WorldCup) ? 0.16 : 0)
-                    + role.TitleMod, 0.02, 0.42);
+                    + role.TitleMod) * leagueGradeAwardFactor, 0.00, 0.42);
                 if (rng.Chance(wc))
                 {
                     season.Titles.Add(TitleKind.BallonDOr);
                     result.AddTitle(TitleKind.BallonDOr);
+                }
+            }
+
+            // --- EQUIPE DO ANO DA AMÉRICA / REI DA AMÉRICA ---
+            // Análogo aos prêmios globais acima, mas escopado a ligas southAmerican
+            // (Roadmap §9 Bloco 1 — reabre a decisão travada da secção 2 sobre só dois
+            // prêmios individuais). O objetivo NÃO é competir com os prêmios globais —
+            // um jogador de liga fora do top-5 europeu dificilmente ganha a Equipe do
+            // Ano global, mas ainda deve ter uma vitrine regional alcançável.
+            if (country.SouthAmerican)
+            {
+                bool saToty = false;
+                double saTotyChance = Math.Clamp((overall - 83) / 38.0
+                    + (season.LeaguePosition == 1 ? 0.04 : 0)
+                    + (season.Titles.Contains(TitleKind.ContinentalPrimary) ? 0.04 : 0), 0, 0.33);
+                if (rng.Chance(saTotyChance))
+                {
+                    saToty = true;
+                    season.Titles.Add(TitleKind.SouthAmericanTeamOfTheYear);
+                    result.AddTitle(TitleKind.SouthAmericanTeamOfTheYear);
+                }
+
+                if (saToty)
+                {
+                    double koa = Math.Clamp((overall - 89) / 45.0
+                        + (season.LeaguePosition == 1 ? 0.06 : 0)
+                        + (season.Titles.Contains(TitleKind.ContinentalPrimary) ? 0.10 : 0)
+                        + role.TitleMod, 0.00, 0.26);
+                    if (rng.Chance(koa))
+                    {
+                        season.Titles.Add(TitleKind.KingOfAmerica);
+                        result.AddTitle(TitleKind.KingOfAmerica);
+                    }
                 }
             }
 

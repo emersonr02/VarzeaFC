@@ -70,8 +70,9 @@ export function Result({ token, nickname, country, position, potential, role, at
   }
 
   const verdict = computeVerdict(data.score, data.titleCounts);
+  const INDIVIDUAL_AWARDS: TitleKind[] = ["BallonDOr", "TeamOfTheYear", "KingOfAmerica", "SouthAmericanTeamOfTheYear"];
   const totalTitles = Object.entries(data.titleCounts)
-    .filter(([k]) => k !== "BallonDOr" && k !== "TeamOfTheYear")
+    .filter(([k]) => !INDIVIDUAL_AWARDS.includes(k as TitleKind))
     .reduce((sum, [, n]) => sum + (n ?? 0), 0);
 
   function saveToAlbum() {
