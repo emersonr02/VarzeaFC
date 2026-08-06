@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using Varzea.Api;
+using Varzea.Data;
+using Varzea.Data.Entities;
 using Varzea.Engine.Model;
 using Varzea.Engine.Ruleset;
 using Varzea.Engine.Rng;
@@ -10,6 +13,14 @@ using Varzea.Engine.Simulation;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(opts =>
     opts.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Persistência é opcional de propósito: sem ConnectionStrings:Varzea configurada, a API
+// inteira continua funcionando exatamente como antes (draft/advance/save só calculando
+// score), o que é o que já está testado via curl. Isso existe pra não quebrar o fluxo
+// atual num ambiente sem Postgres disponível (ver HANDOFF §7.6/§7 nota de ambiente).
+string? connectionString = builder.Configuration.GetConnectionString("Varzea");
+if (connectionString is not null)
+    builder.Services.AddDbContext<VarzeaDbContext>(opts => opts.UseNpgsql(connectionString));
 
 string rulesPath = builder.Configuration["Varzea:RulesetPath"]
     ?? Path.Combine(AppContext.BaseDirectory, "Ruleset", "balance.json");
@@ -103,7 +114,7 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
         tokens.Issue(next), newSeasons, progress.PendingOffer, Finished: !progress.AwaitingDecision));
 });
 
-app.MapPost("/careers/save", (SaveRequest req) =>
+app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
 {
     if (tokens.TryVerify(req.Token) is not { } state) return Results.Unauthorized();
     if (state.Position is null || state.Country is null || state.DraftPicks.Length != 8)
@@ -119,9 +130,60 @@ app.MapPost("/careers/save", (SaveRequest req) =>
     var result = simulator.SimulateCareer(recipe);
     var score = scorer.Score(result);
 
-    // TODO(HANDOFF §7.6): persistir em Postgres e ocupar slot do ranking.
-    // Sem isso ainda não há UNIQUE(user_id, period_type, period_key) nem snapshot imutável.
-    return Results.Ok(new SaveResponse(score.Total, score));
+    // GetService (não injeção automática do parâmetro) porque o DbContext só existe
+    // registrado quando há ConnectionStrings:Varzea — sem isso, null aqui é o caminho
+    // normal (dev sem Postgres), não um erro.
+    var db = http.RequestServices.GetService<VarzeaDbContext>();
+    if (db is null || req.PlayerId is not { } playerId)
+        return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: null));
+
+    if (await db.Players.FindAsync(playerId) is null)
+        db.Players.Add(new Player { Id = playerId, CreatedAt = DateTimeOffset.UtcNow });
+
+    int slotIndex;
+    if (req.SlotIndex is { } requested)
+    {
+        if (requested is < 0 or > 9) return Results.BadRequest("slot precisa ser 0-9");
+        slotIndex = requested;
+    }
+    else
+    {
+        var used = await db.CareerSlots
+            .Where(c => c.PlayerId == playerId && !c.Archived)
+            .Select(c => c.SlotIndex)
+            .ToListAsync();
+        if (used.Count >= 10)
+            return Results.Conflict("os 10 slots estão ocupados — escolha um pra sobrescrever (SlotIndex)");
+        slotIndex = Enumerable.Range(0, 10).Except(used).First();
+    }
+
+    // Sobrescrever nunca apaga: arquiva a linha ativa anterior desse slot (se houver) —
+    // uma Achievement pode estar apontando pra ela (HANDOFF §7.6).
+    var previous = await db.CareerSlots
+        .FirstOrDefaultAsync(c => c.PlayerId == playerId && c.SlotIndex == slotIndex && !c.Archived);
+    if (previous is not null) previous.Archived = true;
+
+    db.CareerSlots.Add(new CareerSlot
+    {
+        Id = Guid.NewGuid(),
+        PlayerId = playerId,
+        SlotIndex = slotIndex,
+        Seed = state.Seed,
+        Country = state.Country,
+        DraftPicks = state.DraftPicks,
+        Position = state.Position.Value,
+        TransferChoices = state.TransferChoices,
+        RulesetVersion = state.RulesetVersion,
+        Score = score.Total,
+        TitlesScore = score.Titles,
+        AwardsScore = score.Awards,
+        ProductionScore = score.Production,
+        PeakScore = score.Peak,
+        SavedAt = DateTimeOffset.UtcNow
+    });
+    await db.SaveChangesAsync();
+
+    return Results.Ok(new SaveResponse(score.Total, score, SavedToSlot: slotIndex));
 });
 
 app.MapGet("/rankings/{period}", (string period) =>
