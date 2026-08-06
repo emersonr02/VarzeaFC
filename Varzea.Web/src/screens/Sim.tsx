@@ -242,11 +242,28 @@ function FinalClip({ season, title, clubFor, nickname, country }: { season: Seas
   );
 }
 
+// Moral (Roadmap §9 Bloco 2): ícone por faixa, -1.0..+1.0.
+function moraleIcon(v: number): string {
+  if (v >= 0.4) return "😄";
+  if (v >= 0.1) return "🙂";
+  if (v > -0.1) return "😐";
+  if (v > -0.4) return "😕";
+  return "😠";
+}
+
+function moraleNote(season: SeasonResult): string | null {
+  if (season.askedToLeave) return "😤 O clima no vestiário azedou — você deixou claro que quer sair.";
+  if (season.declinedBiggerClub) return "❤️ Recusou uma proposta de fora e a torcida vibrou com a lealdade.";
+  if (season.moraleDilemma) return "🗣️ Um imprevisto nos bastidores mexeu com o humor do grupo.";
+  return null;
+}
+
 function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFor: (t: number) => string; country: string }) {
   const champion = season.leaguePosition === 1;
   const club = clubFor(season.clubTier);
   const leagueName = LEAGUE_NAME[country] ?? "Liga Nacional";
   const injuryNote = INJURY_LABEL[season.injury];
+  const note = moraleNote(season);
   return (
     <div className="clip">
       <div className="season-tag">Resumo · {season.age} anos · Overall {season.overall} · {club}</div>
@@ -260,6 +277,10 @@ function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFo
         ⚽ {season.goals} gols · 🎯 {season.assists} assist. · 🛡 {season.tackles} desarmes · 🏟 {season.apps} jogos
         {season.caps > 0 && ` · 🎽 ${season.caps} pela seleção`}
       </div>
+      <div className="stats-line" style={{ marginTop: 4 }}>
+        {moraleIcon(season.teamMorale)} Elenco · {moraleIcon(season.coachMorale)} Técnico · {moraleIcon(season.crowdMorale)} Torcida
+      </div>
+      {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}
     </div>
   );
 }

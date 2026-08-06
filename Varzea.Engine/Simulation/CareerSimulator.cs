@@ -73,6 +73,11 @@ public sealed class CareerSimulator
     /// de produto, escolha mais tensa e rápida.</summary>
     private const int DraftCandidatesPerRound = 2;
 
+    /// <summary>Quanto a moral média (-1..+1) desloca perf (Roadmap §9 Bloco 2). Perf já
+    /// varia por ruído ±8 (ver RunCareer) — 6.0 deixa a moral comparável a esse ruído,
+    /// sem dominar os outros sistemas.</summary>
+    private const double MoralPerfWeight = 6.0;
+
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
         var working = new List<Legend>(pool);
@@ -152,6 +157,13 @@ public sealed class CareerSimulator
 
         int peak = overall, goals = 0, assists = 0, tackles = 0, cs = 0, caps = 0, seasons = 0;
 
+        // --- MORAL (Roadmap §9 Bloco 2) ---
+        // Três valores separados (equipe/técnico/torcida), -1.0..+1.0, começam neutros.
+        // Puramente função de recipe+RNG (mesmo domínio "career" já derivado acima) —
+        // sem estado novo pra serializar entre chamadas de AdvanceCareer.
+        double teamMorale = 0, coachMorale = 0, crowdMorale = 0;
+        int lowMoraleStreak = 0;
+
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
             // curva de evolução: cresce em direção ao potencial, estabiliza, decai
@@ -168,6 +180,12 @@ public sealed class CareerSimulator
 
             int target = _rules.Tiers.First(t => t.Tier == tier).Target;
             double perf = overall - target + (rng.NextDouble() * 16 - 8);
+
+            // Moral realimenta perf (Roadmap §9 Bloco 2) — usa o valor ao FIM da
+            // temporada anterior; a moral desta temporada só é conhecida depois dos
+            // resultados abaixo, então não pode se autoalimentar na mesma iteração.
+            double moraleAtStart = (teamMorale + coachMorale + crowdMorale) / 3.0;
+            perf += moraleAtStart * MoralPerfWeight;
 
             var injury = RollInjury(rng, age);
             if (injury == InjurySeverity.CareerEnding)
@@ -328,9 +346,14 @@ public sealed class CareerSimulator
             }
 
             // --- TRANSFERÊNCIA (decisão do jogador, vinda da receita) ---
+            // moralPressure: versão funcional de "pedir pra sair" (Roadmap §9 Bloco 2) —
+            // moral muito baixa no início da temporada aumenta a chance de oferta mesmo
+            // sem queda de perf, e reforça o gatilho quando os dois coincidem.
+            bool moralPressure = moraleAtStart < -0.4;
             bool offer = false, upgrade = false;
             if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
-            else if (perf < -16 && tier > 1 && rng.Chance(0.30)) { offer = true; upgrade = false; }
+            else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30))
+            { offer = true; upgrade = false; }
 
             bool accepted = false;
             if (offer)
@@ -353,6 +376,63 @@ public sealed class CareerSimulator
                 tier += accepted ? (upgrade ? 1 : -1) : 0;
             }
 
+            // --- MORAL: evolução ao fim da temporada (Roadmap §9 Bloco 2) ---
+            // Recusar proposta de clube maior eleva muito a moral — decisão do produto.
+            bool declinedBiggerClub = offer && upgrade && !accepted;
+            if (declinedBiggerClub) { teamMorale += 0.20; coachMorale += 0.15; crowdMorale += 0.30; }
+
+            if (season.LeaguePosition == 1) { teamMorale += 0.15; coachMorale += 0.15; crowdMorale += 0.20; }
+            else if (season.LeaguePosition >= 15) { teamMorale -= 0.08; coachMorale -= 0.10; crowdMorale -= 0.05; }
+
+            if (season.Titles.Contains(TitleKind.ContinentalPrimary)) { crowdMorale += 0.25; coachMorale += 0.10; }
+            // Holofote individual: torcida ama, mas desperta uma ponta de ciúme no grupo.
+            if (toty || season.Titles.Contains(TitleKind.BallonDOr)) { crowdMorale += 0.15; teamMorale -= 0.03; }
+
+            if (injury is InjurySeverity.Moderate or InjurySeverity.Severe) { coachMorale -= 0.05; crowdMorale -= 0.03; }
+
+            // "Dilemas fictícios" — versão inicial (Roadmap §9 Bloco 2): só o sinal
+            // numérico existe ainda. Conteúdo narrativo variado fica como próximo passo
+            // (ver nota em Domain.cs.SeasonResult.MoraleDilemma); o front hoje mostra uma
+            // mensagem genérica quando a flag vem true.
+            bool moraleDilemma = rng.Chance(0.12);
+            if (moraleDilemma)
+            {
+                double swing = rng.NextDouble() * 0.30 - 0.15;
+                switch (rng.NextInt(0, 2))
+                {
+                    case 0: teamMorale += swing; break;
+                    case 1: coachMorale += swing; break;
+                    default: crowdMorale += swing; break;
+                }
+            }
+
+            teamMorale = Math.Clamp(teamMorale, -1.0, 1.0);
+            coachMorale = Math.Clamp(coachMorale, -1.0, 1.0);
+            crowdMorale = Math.Clamp(crowdMorale, -1.0, 1.0);
+
+            // "Jogador pode pedir pra sair" — versão inicial automática (Roadmap §9
+            // Bloco 2): dispara sozinho quando a moral média fica muito baixa por 2+
+            // temporadas seguidas, em vez de uma ação manual do jogador (corte de escopo
+            // deliberado desta sessão — ver HANDOFF §9). O próprio pedido custa moral;
+            // o efeito funcional sobre a chance de oferta já rola na PRÓXIMA temporada
+            // via moralPressure acima (usa moraleAtStart, que carrega este resultado).
+            double moraleAfter = (teamMorale + coachMorale + crowdMorale) / 3.0;
+            bool askedToLeave = false;
+            if (moraleAfter < -0.5)
+            {
+                lowMoraleStreak++;
+                if (lowMoraleStreak >= 2)
+                {
+                    askedToLeave = true;
+                    teamMorale = Math.Clamp(teamMorale - 0.10, -1.0, 1.0);
+                    coachMorale = Math.Clamp(coachMorale - 0.10, -1.0, 1.0);
+                }
+            }
+            else
+            {
+                lowMoraleStreak = 0;
+            }
+
             goals += sg; assists += sa; tackles += st; cs += scs; seasons++; caps += seasonCaps;
 
             var finished = new SeasonResult
@@ -362,7 +442,9 @@ public sealed class CareerSimulator
                 Tackles = season.Tackles, CleanSheets = season.CleanSheets,
                 LeaguePosition = season.LeaguePosition, Injury = season.Injury,
                 Caps = seasonCaps, InTeamOfTheYear = toty,
-                HadTransferOffer = offer, AcceptedTransfer = accepted
+                HadTransferOffer = offer, AcceptedTransfer = accepted,
+                TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
+                DeclinedBiggerClub = declinedBiggerClub, MoraleDilemma = moraleDilemma, AskedToLeave = askedToLeave
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);

@@ -61,6 +61,13 @@ export interface SeasonResult {
   inTeamOfTheYear: boolean;
   hadTransferOffer: boolean;
   acceptedTransfer: boolean;
+  // Moral (Roadmap §9 Bloco 2) — três valores separados, -1.0..+1.0, ao fim da temporada.
+  teamMorale: number;
+  coachMorale: number;
+  crowdMorale: number;
+  declinedBiggerClub: boolean;
+  moraleDilemma: boolean;
+  askedToLeave: boolean;
 }
 
 export interface PendingTransferOffer {

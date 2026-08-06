@@ -55,6 +55,35 @@ public sealed class SeasonResult
     public bool InTeamOfTheYear { get; init; }
     public bool HadTransferOffer { get; init; }
     public bool AcceptedTransfer { get; init; }
+
+    // --- Moral (Roadmap §9 Bloco 2) ---
+    // Três valores separados (equipe/técnico/torcida), -1.0..+1.0, valor ao FIM da
+    // temporada. Evoluem automaticamente a partir dos resultados da própria temporada
+    // (RNG derivado de Recipe.Seed, mesma garantia de determinismo do resto do motor —
+    // ver CareerSimulator.RunCareer) e realimentam perf na temporada seguinte.
+    public double TeamMorale { get; init; }
+    public double CoachMorale { get; init; }
+    public double CrowdMorale { get; init; }
+
+    /// <summary>Recusou uma proposta de um clube maior nesta temporada — eleva muito a
+    /// moral (decisão do produto, Roadmap §9 Bloco 2). O front usa isto pra narrar.</summary>
+    public bool DeclinedBiggerClub { get; init; }
+
+    /// <summary>
+    /// Versão inicial de "dilemas fictícios" (Roadmap §9 Bloco 2): um evento aleatório
+    /// de vestiário/torcida mexeu na moral fora do fluxo de transferência. Só o sinal
+    /// numérico existe ainda — o conteúdo narrativo (textos variados por dilema) fica
+    /// como próximo passo; o front hoje mostra uma mensagem genérica quando true.
+    /// </summary>
+    public bool MoraleDilemma { get; init; }
+
+    /// <summary>
+    /// Versão inicial de "jogador pode pedir pra sair" (Roadmap §9 Bloco 2): dispara
+    /// AUTOMATICAMENTE quando a moral média fica muito baixa por 2+ temporadas seguidas,
+    /// em vez de uma ação manual do jogador — corte de escopo deliberado desta sessão
+    /// (ver HANDOFF §9). O próprio pedido custa mais moral e aumenta a chance de oferta.
+    /// </summary>
+    public bool AskedToLeave { get; init; }
 }
 
 public enum InjurySeverity { None, Minor, Moderate, Severe, CareerEnding }
