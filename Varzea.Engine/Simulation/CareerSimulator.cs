@@ -147,6 +147,15 @@ public sealed class CareerSimulator
         int tier = StartingTier(potential, rng);
         int transferIdx = 0;
 
+        // --- CONTRATO (Roadmap §9 Bloco 3) ---
+        // Duração decidida pela FASE da carreira (crescendo/pico/declinando), não pelo
+        // potencial bruto — um veterano de potencial alto mas overall caindo (o exemplo
+        // do produto: "tipo o Modric... o over só cai") recebe contrato curto do mesmo
+        // jeito. contractYear conta quantas temporadas já se passaram no contrato atual;
+        // quando bate contractDuration, vira decisão de renovação (ver bloco abaixo).
+        int contractYear = 0;
+        int contractDuration = NextContractDuration(curve.StartAge, peakAge, retireAge, rng);
+
         var result = new CareerResult
         {
             Recipe = recipe,
@@ -345,15 +354,47 @@ public sealed class CareerSimulator
                 }
             }
 
-            // --- TRANSFERÊNCIA (decisão do jogador, vinda da receita) ---
-            // moralPressure: versão funcional de "pedir pra sair" (Roadmap §9 Bloco 2) —
-            // moral muito baixa no início da temporada aumenta a chance de oferta mesmo
-            // sem queda de perf, e reforça o gatilho quando os dois coincidem.
+            // --- CONTRATO / TRANSFERÊNCIA (Roadmap §9 Bloco 3, substitui o gatilho só-perf
+            // do Bloco 2) ---
+            // moralPressure: versão funcional de "pedir pra sair" (Bloco 2) — moral muito
+            // baixa aumenta a chance de oferta mesmo sem queda de perf.
             bool moralPressure = moraleAtStart < -0.4;
-            bool offer = false, upgrade = false;
-            if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
-            else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30))
-            { offer = true; upgrade = false; }
+            bool contractExpiring = contractYear >= contractDuration;
+            bool offer = false, upgrade = false, contractRenewed = false;
+
+            if (contractExpiring)
+            {
+                // Decisão de renovação: sempre acontece quando o contrato vence — não é
+                // probabilística como as ofertas de fora do ciclo. Moral (Bloco 2) e forma
+                // recente pesam a favor; idade perto da aposentadoria pesa contra.
+                double renewChance = Math.Clamp(0.55 + perf / 120.0 + moraleAtStart * 0.20
+                    - (age >= retireAge - 1 ? 0.30 : 0), 0.05, 0.90);
+                if (rng.Chance(renewChance))
+                {
+                    contractRenewed = true;
+                }
+                else
+                {
+                    // Não renovou: o motor gera a proposta que aparece (Roadmap §9 Bloco 3
+                    // pede "1+ propostas" — esta sessão entrega exatamente 1, calculada a
+                    // partir do nível atual vs. o padrão do tier; múltiplas propostas
+                    // simultâneas ficam pro próximo passo, ver HANDOFF §9).
+                    offer = true;
+                    upgrade = overall >= target;
+                }
+            }
+            else
+            {
+                // Fora do ciclo de contrato: gatilho por forma (perf) ou pressão de moral
+                // (Bloco 2), MAIS uma chance de "olheiro" proporcional ao nível do jogador
+                // (Roadmap §9 Bloco 3: "propostas chegam frequentemente fora da expiração,
+                // proporcional ao nível do jogador") — antes só o gatilho de perf existia.
+                double scoutingChance = Math.Clamp((overall - 70) / 200.0, 0, 0.15);
+                if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
+                else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30))
+                { offer = true; upgrade = false; }
+                else if (tier < 5 && rng.Chance(scoutingChance)) { offer = true; upgrade = true; }
+            }
 
             bool accepted = false;
             if (offer)
@@ -368,17 +409,42 @@ public sealed class CareerSimulator
                         Result = Finalize(result, peak, seasons, goals, assists, tackles, cs, caps),
                         PendingOffer = new PendingTransferOffer(
                             age, overall, tier, upgrade,
-                            sg, sa, st, scs, season.LeaguePosition)
+                            sg, sa, st, scs, season.LeaguePosition, contractExpiring)
                     };
                 }
                 accepted = transferIdx < recipe.TransferChoices.Length && recipe.TransferChoices[transferIdx];
                 transferIdx++;
-                tier += accepted ? (upgrade ? 1 : -1) : 0;
+                // Clamp: os gatilhos de fora do ciclo já guardam tier<5/tier>1 na condição,
+                // mas a proposta de não-renovação (upgrade = overall >= target) não tem
+                // esse guard — sem o clamp, tier podia sair de [1,5] e quebrar o lookup de
+                // Tiers na próxima temporada.
+                tier = Math.Clamp(tier + (accepted ? (upgrade ? 1 : -1) : 0), 1, 5);
+            }
+
+            // Reinicia a contagem do contrato sempre que um contrato NOVO começa: renovou,
+            // aceitou uma proposta (qualquer origem), ou recusou a única proposta na não-
+            // renovação (fica de "prova", contrato curto). Do contrário, mais um ano se
+            // passou no contrato atual.
+            if (contractRenewed || (offer && accepted))
+            {
+                contractYear = 0;
+                contractDuration = NextContractDuration(age, peakAge, retireAge, rng);
+            }
+            else if (contractExpiring && offer && !accepted)
+            {
+                contractYear = 0;
+                contractDuration = Math.Max(1, Math.Min(2, retireAge - age));
+            }
+            else
+            {
+                contractYear++;
             }
 
             // --- MORAL: evolução ao fim da temporada (Roadmap §9 Bloco 2) ---
             // Recusar proposta de clube maior eleva muito a moral — decisão do produto.
-            bool declinedBiggerClub = offer && upgrade && !accepted;
+            // Só conta pra esse bônus fora do ciclo de contrato: recusar a proposta da
+            // não-renovação é uma aposta em si mesmo, não lealdade a um contrato vigente.
+            bool declinedBiggerClub = offer && upgrade && !accepted && !contractExpiring;
             if (declinedBiggerClub) { teamMorale += 0.20; coachMorale += 0.15; crowdMorale += 0.30; }
 
             if (season.LeaguePosition == 1) { teamMorale += 0.15; coachMorale += 0.15; crowdMorale += 0.20; }
@@ -444,7 +510,8 @@ public sealed class CareerSimulator
                 Caps = seasonCaps, InTeamOfTheYear = toty,
                 HadTransferOffer = offer, AcceptedTransfer = accepted,
                 TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
-                DeclinedBiggerClub = declinedBiggerClub, MoraleDilemma = moraleDilemma, AskedToLeave = askedToLeave
+                DeclinedBiggerClub = declinedBiggerClub, MoraleDilemma = moraleDilemma, AskedToLeave = askedToLeave,
+                ContractExpiring = contractExpiring, ContractRenewed = contractRenewed
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);
@@ -474,6 +541,21 @@ public sealed class CareerSimulator
         if (potential >= 80) return 2;
         if (potential >= 65) return rng.Chance(0.7) ? 1 : 2;
         return 1;
+    }
+
+    /// <summary>
+    /// Duração do próximo contrato, em temporadas (Roadmap §9 Bloco 3). Decidida pela
+    /// FASE da carreira — crescendo (idade &lt; pico), no auge, ou declinando (idade &gt;
+    /// pico+3) — não pelo potencial bruto: um jogador de potencial altíssimo mas overall
+    /// já caindo recebe contrato curto do mesmo jeito (ex. do produto: "tipo o Modric...
+    /// o over só cai"). Nunca ultrapassa a idade de aposentadoria já sorteada.
+    /// </summary>
+    private static int NextContractDuration(int age, int peakAge, int retireAge, Pcg32 rng)
+    {
+        int baseDuration = age < peakAge ? rng.NextInt(4, 5)
+            : age <= peakAge + 3 ? rng.NextInt(3, 4)
+            : rng.NextInt(1, 2);
+        return Math.Max(1, Math.Min(baseDuration, retireAge - age));
     }
 
     private static InjurySeverity RollInjury(Pcg32 rng, int age)

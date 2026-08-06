@@ -68,6 +68,9 @@ export interface SeasonResult {
   declinedBiggerClub: boolean;
   moraleDilemma: boolean;
   askedToLeave: boolean;
+  // Contrato (Roadmap §9 Bloco 3)
+  contractExpiring: boolean;
+  contractRenewed: boolean;
 }
 
 export interface PendingTransferOffer {
@@ -80,6 +83,8 @@ export interface PendingTransferOffer {
   tackles: number;
   cleanSheets: number;
   leaguePosition: number;
+  // Roadmap §9 Bloco 3: veio de um contrato vencido sem renovação, não de fora do ciclo.
+  contractExpiring: boolean;
 }
 
 export interface AdvanceResponse {

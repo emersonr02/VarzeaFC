@@ -84,6 +84,15 @@ public sealed class SeasonResult
     /// (ver HANDOFF §9). O próprio pedido custa mais moral e aumenta a chance de oferta.
     /// </summary>
     public bool AskedToLeave { get; init; }
+
+    // --- Contrato (Roadmap §9 Bloco 3) ---
+    /// <summary>O contrato venceu nesta temporada — sempre dispara uma decisão de
+    /// renovação (não é probabilístico como as ofertas de fora do ciclo).</summary>
+    public bool ContractExpiring { get; init; }
+
+    /// <summary>Quando ContractExpiring, indica se o clube renovou automaticamente
+    /// (sem decisão do jogador) ou se veio uma proposta de fora (ver HadTransferOffer).</summary>
+    public bool ContractRenewed { get; init; }
 }
 
 public enum InjurySeverity { None, Minor, Moderate, Severe, CareerEnding }
@@ -120,7 +129,10 @@ public sealed class CareerResult
 /// </summary>
 public sealed record PendingTransferOffer(
     int Age, int Overall, int ClubTier, bool Upgrade,
-    int Goals, int Assists, int Tackles, int CleanSheets, int LeaguePosition);
+    int Goals, int Assists, int Tackles, int CleanSheets, int LeaguePosition,
+    /// <summary>Veio de um contrato vencido sem renovação (Roadmap §9 Bloco 3), não de
+    /// uma oferta de fora do ciclo — muda a narrativa no front.</summary>
+    bool ContractExpiring = false);
 
 /// <summary>
 /// Resultado de rodar a carreira até a próxima decisão pendente, ou até o fim.

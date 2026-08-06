@@ -281,6 +281,11 @@ function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFo
         {moraleIcon(season.teamMorale)} Elenco · {moraleIcon(season.coachMorale)} Técnico · {moraleIcon(season.crowdMorale)} Torcida
       </div>
       {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}
+      {season.contractExpiring && season.contractRenewed && (
+        <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>
+          📝 Contrato renovado com {club} — o clube quer contar com você por mais alguns anos.
+        </div>
+      )}
     </div>
   );
 }
@@ -301,7 +306,7 @@ function AwardsClip({ season }: { season: SeasonResult }) {
 }
 
 function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDecline }: {
-  offer: { age: number; clubTier: number; upgrade: boolean };
+  offer: { age: number; clubTier: number; upgrade: boolean; contractExpiring: boolean };
   clubFor: (t: number) => string;
   isAwaiting: boolean;
   resolvedAccept?: boolean;
@@ -309,16 +314,25 @@ function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDec
   onDecline: () => void;
 }) {
   const toClub = clubFor(offer.clubTier + (offer.upgrade ? 1 : -1));
-  const label = offer.upgrade ? "Proposta de um clube maior" : "Proposta de um clube menor, mas com mais minutos em campo";
+  // Roadmap §9 Bloco 3: contrato vencido sem renovação tem uma narrativa diferente de
+  // uma oferta de fora do ciclo — o clube atual optou por não seguir com você.
+  const label = offer.contractExpiring
+    ? "Seu contrato venceu e o clube não renovou"
+    : offer.upgrade
+      ? "Proposta de um clube maior"
+      : "Proposta de um clube menor, mas com mais minutos em campo";
+  const body = offer.contractExpiring
+    ? `Sem acordo pra continuar, mas ${toClub} apareceu com proposta. Assinar ou apostar numa renovação curta pra provar de novo?`
+    : `${toClub} quer contar com você. Aceitar a proposta ou permanecer no clube atual?`;
   return (
     <div className="clip clip-transfer">
       <div className="season-tag">Janela de transferências · {offer.age} anos</div>
       <div className="headline">{label}</div>
-      <div className="body">{toClub} quer contar com você. Aceitar a proposta ou permanecer no clube atual?</div>
+      <div className="body">{body}</div>
       {isAwaiting ? (
         <div className="transfer-actions">
           <button className="btn-mini accept" onClick={onAccept}>Aceitar e assinar</button>
-          <button className="btn-mini decline" onClick={onDecline}>Permanecer</button>
+          <button className="btn-mini decline" onClick={onDecline}>{offer.contractExpiring ? "Renovar curto e provar de novo" : "Permanecer"}</button>
         </div>
       ) : (
         <div style={{ marginTop: 8, fontFamily: "var(--font-b)", fontWeight: 700, fontSize: 12, color: resolvedAccept ? "var(--blue)" : "var(--ink-soft)" }}>
