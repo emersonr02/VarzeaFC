@@ -251,38 +251,45 @@ essa propriedade que se perderia.
    período, ou commit-reveal; ou aceitar o risco e mitigar limitando a UMA tentativa
    oficial por usuário/período — o que de qualquer forma só dá pra impor com o Postgres
    do passo 6, então essa decisão pode esperar até lá).
-6. **Postgres.** **Código pronto na branch `feature/postgres-persistence`, NUNCA rodado
-   contra um Postgres de verdade** — este ambiente não tem Docker/psql, então a migration
-   foi gerada e o schema conferido lendo o SQL, não testado end-to-end. Confirmar isso
-   antes de confiar cegamente.
-   - `Varzea.Data`: `Player`, `CareerSlot` (a receita + `RulesetVersion` + score
-     congelado — "regras invioláveis" da secção 2), `Achievement`.
-   - `CareerSlot`: índice único **parcial** em `(PlayerId, SlotIndex) WHERE NOT Archived`
-     — só um slot ativo por posição, mas a linha antiga sobrescrita não é apagada
-     (`Archived=true`), porque uma `Achievement` pode referenciá-la.
-   - `Achievement`: `UNIQUE (PlayerId, PeriodType, PeriodKey)`, exatamente como este
-     HANDOFF pede — dá idempotência ao job de fecho. FK pra `CareerSlot` com
-     `DeleteBehavior.Restrict`: apagar uma carreira referenciada por conquista falha no
-     banco, não é só uma convenção de código.
-   - `Seed` (`ulong`) vira `numeric(20,0)` — `bigint` do Postgres é 64-bit **com sinal**,
-     não cobre o range inteiro de `ulong`.
-   - `DraftPicks`/`TransferChoices` usam `integer[]`/`boolean[]` nativos do Npgsql, sem
-     tabela auxiliar.
-   - `Varzea.Api` referencia `Varzea.Data` mas só registra o `DbContext` se
-     `ConnectionStrings:Varzea` existir na configuração — sem isso a API roda exatamente
-     como antes (só calcula score, não persiste), pra não quebrar o fluxo já testado
-     num ambiente sem Postgres. `/careers/save` ganhou `PlayerId`/`SlotIndex` opcionais
-     (`PlayerId` é só FK provisória — não existe autenticação real ainda).
-   - **Sem migrar de verdade:** `dotnet ef database update` nunca rodou. Antes de usar
-     essa branch, confirmar que o schema gerado é o que se quer (ex.: se o job de fecho
-     de período vai rodar dentro da API ou como worker separado ainda não foi decidido).
-7. **Front React** consumindo. **Não iniciado** — o ambiente tinha Node v16.16 (EOL),
-   vale checar/atualizar antes de escolher tooling (Vite moderno pede Node 18+).
-8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado.**
+6. **Postgres.** Já em `main` (`Varzea.Data`) e **verificado contra um Postgres de
+   verdade** (Docker local, `docker compose up -d` + `dotnet ef database update`) —
+   deixou de ser "só schema lido, nunca rodado". Testado via curl com dois "PlayerId"
+   diferentes e confirmado, direto no banco:
+   - `CareerSlot` persiste com os dados corretos e o score bate com a resposta da API.
+   - Salvar de novo no mesmo `SlotIndex` **arquiva** a linha antiga (`Archived=true`) em
+     vez de apagar — confirmado com duas carreiras reais no slot 0.
+   - Tentar `DELETE` numa `CareerSlot` referenciada por uma `Achievement` **falha no
+     banco** (`FK_Achievements_CareerSlots_CareerSlotId`, `DeleteBehavior.Restrict`) —
+     não é só uma convenção de código, é uma restrição de verdade.
+   - Inserir uma segunda `Achievement` com o mesmo `(PlayerId, PeriodType, PeriodKey)`
+     **falha** por violação do índice único — a idempotência do job de fecho de período
+     está garantida no schema, não depende de o código do job ser cuidadoso.
+   - Corrigido de passagem: `VarzeaDbContextFactory` ignorava a connection string passada
+     por `dotnet ef ... -- --connection`; agora lê de `VARZEA_DB_CONNECTION` se definida.
+
+   **Reclassificado como pós-MVP** (ver secção 9) — o utilizador decidiu que o MVP não
+   tem login, então não há `PlayerId` real pra persistir nada ainda. O código fica pronto
+   e testado, mas inerte até existir autenticação.
+7. **Front React** — `Varzea.Web`, funcional de ponta a ponta, testado num navegador
+   real. Está na branch `feature/react-frontend`
+   ([abrir PR](https://github.com/emersonr02/VarzeaFC/pull/new/feature/react-frontend)),
+   ainda não mesclada. Detalhes completos na branch (visual portado do
+   `varzea-lendas.html`, ordem da final corrigida, vereditos recalibrados, 3 extensões
+   pequenas na API). Falta: mesclar o PR, e depois disso aplicar as mudanças da
+   secção 9 (Bloco 1 muda draft/pontuação/prêmios, o que o front já mostra).
+8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado**, e agora explicitamente
+   pós-MVP junto com o Postgres (secção 9) — não faz sentido gerenciar slots antes de
+   existir login.
 
 ---
 
 ## 8. Protótipo de UI existente
+
+**Atualização:** o `varzea-lendas.html` (1311 linhas) não estava versionado neste
+repositório — foi encontrado no disco do utilizador e commitado na branch
+`feature/react-frontend`. Já foi portado pro React (`Varzea.Web`), com a ordem das
+finais corrigida e os vereditos recalibrados pra escala real do motor. O texto abaixo é
+o registo original, mantido por contexto histórico.
 
 Há um POC funcional em HTML/JS (`varzea-lendas.html`) com o fluxo completo:
 draft → posição → figurinha → modo (jogo a jogo / temporada a temporada) → carreira → veredito.
@@ -292,3 +299,66 @@ face ao motor C# e serve apenas como referência visual e de fluxo.
 Ideia por copiar de `thefenomeno.com`: as finais disparam **a meio da temporada**, antes de
 qualquer coisa ser revelada, o que preserva a tensão. No POC a final aparece depois do
 resumo da liga, o que estraga o efeito.
+
+---
+
+## 9. Roadmap pós-descoberta (definido em sessão de 2026-08-06)
+
+### Decisão: MVP sem login
+Postgres, slots geríveis, ranking e conquistas persistentes (secção 7, itens 6 e 8) ficam
+**pós-MVP** — sem autenticação não há `PlayerId` de verdade pra pendurar nada. O código
+desses itens já existe e já foi verificado contra Postgres real (secção 7.6), só fica
+inerte até existir login. O MVP é: motor + API + front consumindo, sem persistência.
+
+### Três blocos de mudança de produto, todos dentro do MVP (decisão do utilizador:
+"os 3, mas não faça nada agora" — nada disto foi implementado ainda)
+
+**Bloco 1 — regras/pontuação, contido no motor + Monte Carlo, sem estado novo:**
+- Draft: **3 → 2 opções** por rodada (`CareerSimulator.DrawCandidates`, hoje fixo em 3).
+- Bola de Ouro / Equipe do Ano **gated por força da liga**: hoje o único gate é "foi
+  Equipe do Ano"; falta pesar a força da liga do jogador — fora do top-5 europeu, chance
+  próxima de zero pros prêmios globais. Ideia do utilizador: "um jogador de uma liga fora
+  do top 5 nunca ganharia uma Bola de Ouro e dificilmente estaria no elenco do ano."
+- **Pontuação por prestígio de país/liga**: Premier League > Espanha/Itália > França >
+  resto; segunda divisão = metade do valor da divisão principal do mesmo país. **Isto não
+  dá pra derivar por frequência** como o resto da tabela da secção 5 — vai precisar de um
+  multiplicador por país **autoral**, documentado como exceção deliberada (mesma lógica
+  da seed fixa da Bola de Ouro anual, que também é uma exceção assumida às regras gerais
+  de "nunca escrito à mão").
+- **Novo par de prêmios continental**: "Rei da América" (peso ~1/3 da Bola de Ouro) e
+  "Equipe do Ano da América". **Reabre a decisão travada da secção 2** ("só dois prêmios
+  individuais") — não é descuido, é mudança deliberada; atualizar a tabela da secção 2
+  quando isto for implementado.
+- Qualquer mudança deste bloco exige rodar `Varzea.MonteCarlo` de novo e reconferir os
+  3 critérios de aceite da secção 5 — a tabela de pesos toda deve ser recalibrada.
+
+**Bloco 2 — moral/relacionamento, estado novo que realimenta a performance:**
+- Relação com equipe, técnico e torcida — dinâmica, isto é, muda com o resultado em
+  campo E, na direção contrária, influencia o próprio resultado (`perf` no
+  `CareerSimulator` ganha um termo dependente de moral).
+- Jogador pode pedir pra sair — a ação em si prejudica a relação.
+- Recusar uma proposta de clube maior **eleva muito** a moral.
+- Eventos aleatórios ("dilemas fictícios") que mexem na moral, fora do fluxo de
+  transferência.
+- Em aberto: é uma moral única ou três separadas (equipe/técnico/torcida)? Escala
+  numérica ainda não definida — decidir antes de implementar pra não ter que redesenhar o
+  schema de `CareerResult`/`SeasonResult` duas vezes.
+
+**Bloco 3 — sistema de contratos (o mais arquitetural, substitui o mecanismo atual):**
+- Hoje a "oferta de transferência" é puramente probabilística por temporada (`perf > 14`
+  ou `perf < -16`, ver `CareerSimulator.cs`). O novo sistema é contrato com prazo:
+  expira, pode renovar ou não; se não renovar, o motor gera 1+ propostas de acordo com
+  overall, potencial, atuações recentes e idade.
+- Propostas também chegam **frequentemente fora da expiração**, proporcional ao nível do
+  jogador — não é só o gatilho binário de hoje.
+- Em aberto, precisa de decisão antes de implementar: duração do contrato (fixa? por
+  faixa de potencial/idade?), quantas propostas gerar na não-renovação e de que critério
+  exato surgem, e como isso interage com o Bloco 2 (moral provavelmente afeta chance de
+  renovação e quantidade/qualidade das propostas).
+
+### Ordem de implementação sugerida
+Bloco 1 primeiro (mudança de regra, testável no Monte Carlo em horas, não exige desenho
+de estado novo) → Bloco 2 (precisa de decisão sobre o formato da moral antes de mexer no
+`CareerSimulator`) → Bloco 3 (o mais caro em design; considerar prototipar as regras de
+geração de propostas no espelho Python antes de portar pro C#, como já foi feito pro
+sistema de pontuação da secção 5).
