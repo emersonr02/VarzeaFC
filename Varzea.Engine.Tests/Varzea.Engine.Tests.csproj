@@ -13,4 +13,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Varzea.Engine\Varzea.Engine.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Varzea.Engine\Ruleset\balance.json" Link="Ruleset\balance.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
