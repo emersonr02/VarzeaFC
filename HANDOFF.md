@@ -70,8 +70,9 @@ Há uma quarta branch com trabalho não mesclado em `main`:
 - `feature/postgres-persistence` — `Varzea.Data` (EF Core + Npgsql), ver secção 7.6.
   **Nunca rodou contra um Postgres de verdade.**
 - `feature/dev-environment-setup` (esta branch) — `docker-compose.yml` pra subir esse
-  Postgres localmente, e `.nvmrc` fixando Node 20 (o ambiente onde isto foi escrito tinha
-  Node v16.16, EOL).
+  Postgres localmente, e `.nvmrc` fixando Node 24 LTS (o ambiente onde isto foi escrito
+  tinha Node v16.16, EOL — e o Node 20 também já saiu de LTS em abril/2026, então nem
+  ele seria a escolha certa hoje).
 
 ### Aviso sobre a calibração
 A secção 5 foi calibrada com o espelho Python E confirmada batendo com o motor C# via
@@ -120,8 +121,9 @@ aplica sem erro antes de assumir que o schema da secção 7.6 está correto.
 
 O ambiente onde a maior parte deste HANDOFF foi escrita tinha Node v16.16 (EOL desde
 2023) — Vite e as versões atuais de React não garantem funcionar nisso. `.nvmrc` na raiz
-fixa Node 20 (LTS). Com `nvm` instalado: `nvm install && nvm use`. Sem `nvm`, instalar
-qualquer Node ≥ 20 LTS direto do site oficial.
+fixa Node 24 (LTS atual; o 20 saiu de LTS em abril/2026). Com `nvm` instalado: `nvm
+install && nvm use`. Sem `nvm`, instalar qualquer Node LTS atual direto do site oficial
+ou via `winget install OpenJS.NodeJS.LTS` no Windows.
 
 ---
 
@@ -257,8 +259,8 @@ essa propriedade que se perderia.
    Carreira referenciada por conquista nunca pode ser apagada, só arquivada.
    **Não iniciado** — sem Postgres/docker disponíveis no ambiente onde isto foi escrito
    para testar de verdade; confirmar antes de gerar migrations às cegas.
-7. **Front React** consumindo. **Não iniciado** — o ambiente tinha Node v16.16 (EOL),
-   vale checar/atualizar antes de escolher tooling (Vite moderno pede Node 18+).
+7. **Front React** consumindo. Node atualizado pra 24 LTS nesta branch (era v16.16, EOL)
+   — bloqueador de tooling resolvido. Scaffold em si **ainda não iniciado**.
 8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado.**
 
 ---
