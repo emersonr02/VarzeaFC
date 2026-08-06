@@ -13,11 +13,16 @@ public sealed record DraftRequest(string Token, int Pick);
 
 public sealed record DraftCompleteResponse(string Token, int[] Attributes);
 
-public sealed record PositionRequest(string Token, Pos Position);
+public sealed record PositionRequest(string Token, Pos Position, string Country);
 
 public sealed record PositionLockedResponse(string Token, int Potential, string Role);
 
-public sealed record SaveRequest(string Token, string Country, bool[] TransferChoices);
+public sealed record AdvanceRequest(string Token, bool? Decision);
+
+public sealed record AdvanceResponse(
+    string Token, IReadOnlyList<SeasonResult> NewSeasons, PendingTransferOffer? PendingOffer, bool Finished);
+
+public sealed record SaveRequest(string Token);
 
 public sealed record SaveResponse(double Score, ScoreBreakdown Breakdown);
 

@@ -212,20 +212,28 @@ essa propriedade que se perderia.
    em vez de sessão no servidor — combina com "receita, nunca placar": o servidor não
    guarda nada até o `/careers/save`. Testado que um token adulterado dá 401.
 
-   **Dois furos abertos, não resolvidos ainda:**
-   - `POST /careers/advance` (temporada inteira por chamada, decisão a decisão) **não
-     existe.** O `CareerSimulator.SimulateCareer` roda a carreira inteira de uma vez a
-     partir de um `bool[12]` de transferências decidido *antecipadamly* — ele não pausa
-     no meio para perguntar "aceita a oferta?". Servir esse fluxo interativo como o
-     HANDOFF descreve exige transformar o `for` de `SimulateCareer` numa máquina de
-     estados retomável (parar exatamente numa oferta de transferência, devolver a
-     temporada, continuar na próxima chamada) — refactor de motor, não só de API.
-     Por ora `/careers/save` exige as 12 decisões completas de uma vez.
-   - A seed do desafio anual é **pública e determinística por ano**. Como o algoritmo é
-     conhecido (é o próprio produto), alguém pode rodar o motor offline com essa seed e
-     testar picks/transferências até achar o resultado ótimo antes de jogar "de verdade" —
-     o oposto do que a secção 2 pede ("se for farmável não vale nada"). Isso não foi
-     corrigido; precisa de decisão (ex.: só revelar a seed no fim do período, ou commit-reveal).
+   ~~`POST /careers/advance` não existe.~~ **Feito.** `CareerSimulator` ganhou
+   `AdvanceCareer`, que roda a mesma lógica de `SimulateCareer` mas pausa exatamente numa
+   oferta de transferência sem decisão ainda em `recipe.TransferChoices` — sem precisar
+   serializar RNG entre chamadas: como a carreira inteira custa microssegundos, cada
+   chamada simplesmente re-simula do zero com a receita uma decisão mais completa
+   (`Varzea.Engine.Simulation.CareerSimulator.RunCareer`). Provado equivalente a
+   `SimulateCareer` em [Varzea.Engine.Tests/AdvanceCareerTests.cs](Varzea.Engine.Tests/AdvanceCareerTests.cs)
+   (5 seeds, passo-a-passo vs. de uma vez só, mesmo hash) e testado via curl fim-a-fim
+   (draft → posição/país → 3 ofertas de transferência decididas uma a uma → save).
+   `/careers/position` agora também trava o país (a simulação usa `Country` desde a
+   primeira temporada, não só no save — por isso não dava pra deixar essa escolha só
+   pro fim). `/careers/save` não recebe mais país nem transferências: usa o que já foi
+   decidido em `/careers/advance`.
+
+   **Um furo aberto, não resolvido ainda:** a seed do desafio anual é **pública e
+   determinística por ano**. Como o algoritmo é conhecido (é o próprio produto), alguém
+   pode rodar o motor offline com essa seed e testar picks/transferências até achar o
+   resultado ótimo antes de jogar "de verdade" — o oposto do que a secção 2 pede ("se for
+   farmável não vale nada"). Precisa de decisão (ex.: só revelar a seed no fim do
+   período, ou commit-reveal; ou aceitar o risco e mitigar limitando a UMA tentativa
+   oficial por usuário/período — o que de qualquer forma só dá pra impor com o Postgres
+   do passo 6, então essa decisão pode esperar até lá).
 6. **Postgres.** Tabela de conquistas com `UNIQUE (user_id, period_type, period_key)` —
    idempotência do job de fecho de período vem daí. Snapshot imutável no fecho,
    nunca derivar ranking em tempo real (senão um rebalanceamento reescreve o passado).

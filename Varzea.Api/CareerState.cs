@@ -12,5 +12,7 @@ public sealed record CareerState(
     string RulesetVersion,
     int[] DraftPicks,
     Pos? Position,
-    bool[] TransferChoices
+    string? Country,
+    bool[] TransferChoices,
+    int SeasonsRevealed = 0
 );

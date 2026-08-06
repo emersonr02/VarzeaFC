@@ -105,7 +105,20 @@ public sealed class CareerSimulator
 
     // ---------- CARREIRA ----------
 
-    public CareerResult SimulateCareer(CareerRecipe recipe)
+    /// <summary>Roda a carreira inteira. Exige TransferChoices já completo — usado pelo
+    /// Monte Carlo e por /careers/save (que já recebe a receita fechada).</summary>
+    public CareerResult SimulateCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: false).Result;
+
+    /// <summary>
+    /// Roda a carreira até a próxima oferta de transferência sem decisão em
+    /// recipe.TransferChoices, ou até o fim. Não precisa serializar RNG entre chamadas:
+    /// como a carreira inteira custa microssegundos, cada chamada re-simula do zero com
+    /// a receita um pouco mais completa (uma decisão a mais) — determinístico por
+    /// construção, e mantém a API sem sessão de servidor (ver Varzea.Api.CareerState).
+    /// </summary>
+    public CareerProgress AdvanceCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: true);
+
+    private CareerProgress RunCareer(CareerRecipe recipe, bool interactive)
     {
         var attrs = ResolveDraft(recipe.Seed, recipe.DraftPicks);
         var pos = recipe.Position;
@@ -170,8 +183,6 @@ public sealed class CareerSimulator
             int st = Output(rng, overall, factors.Defending, 95, perf, apps, role.DefenseMod);
             int scs = (int)Math.Round(apps * Math.Clamp(0.10 + factors.Defending * (0.22 + perf / 160.0), 0, 0.60));
 
-            goals += sg; assists += sa; tackles += st; cs += scs; seasons++;
-
             var season = new SeasonResult
             {
                 Age = age, Overall = overall, ClubTier = tier, Apps = apps,
@@ -234,7 +245,6 @@ public sealed class CareerSimulator
                     }
                 }
             }
-            caps += seasonCaps;
 
             // --- PRÊMIOS INDIVIDUAIS ---
             // Equipe do Ano: melhor de cada posição. A chance NÃO depende de gols nem
@@ -269,21 +279,32 @@ public sealed class CareerSimulator
             }
 
             // --- TRANSFERÊNCIA (decisão do jogador, vinda da receita) ---
-            bool offer = false, accepted = false;
-            if (perf > 14 && tier < 5 && rng.Chance(0.45))
+            bool offer = false, upgrade = false;
+            if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
+            else if (perf < -16 && tier > 1 && rng.Chance(0.30)) { offer = true; upgrade = false; }
+
+            bool accepted = false;
+            if (offer)
             {
-                offer = true;
+                if (interactive && transferIdx >= recipe.TransferChoices.Length)
+                {
+                    // Sem decisão ainda pra essa oferta — pausa aqui. Esta temporada NÃO
+                    // entra no Timeline (só temporadas fechadas entram); os números já
+                    // calculados voltam via PendingOffer pro cliente decidir.
+                    return new CareerProgress
+                    {
+                        Result = Finalize(result, peak, seasons, goals, assists, tackles, cs, caps),
+                        PendingOffer = new PendingTransferOffer(
+                            age, overall, tier, upgrade,
+                            sg, sa, st, scs, season.LeaguePosition)
+                    };
+                }
                 accepted = transferIdx < recipe.TransferChoices.Length && recipe.TransferChoices[transferIdx];
                 transferIdx++;
-                if (accepted) tier++;
+                tier += accepted ? (upgrade ? 1 : -1) : 0;
             }
-            else if (perf < -16 && tier > 1 && rng.Chance(0.30))
-            {
-                offer = true;
-                accepted = transferIdx < recipe.TransferChoices.Length && recipe.TransferChoices[transferIdx];
-                transferIdx++;
-                if (accepted) tier--;
-            }
+
+            goals += sg; assists += sa; tackles += st; cs += scs; seasons++; caps += seasonCaps;
 
             var finished = new SeasonResult
             {
@@ -298,7 +319,7 @@ public sealed class CareerSimulator
             result.Timeline.Add(finished);
         }
 
-        return Finalize(result, peak, seasons, goals, assists, tackles, cs, caps);
+        return new CareerProgress { Result = Finalize(result, peak, seasons, goals, assists, tackles, cs, caps) };
     }
 
     private static CareerResult Finalize(CareerResult r, int peak, int seasons,

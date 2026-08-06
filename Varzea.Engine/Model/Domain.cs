@@ -80,3 +80,25 @@ public sealed class CareerResult
     public void AddTitle(TitleKind k)
         => TitleCounts[k] = CountOf(k) + 1;
 }
+
+/// <summary>
+/// Uma oferta de transferência ainda sem decisão. A temporada em que ela ocorreu NÃO
+/// entra no Timeline até ser decidida — Timeline só guarda temporadas fechadas.
+/// Upgrade=true significa que aceitar sobe um tier; false, que aceitar desce um tier
+/// (uma saída de uma fase ruim, não necessariamente rebaixamento).
+/// </summary>
+public sealed record PendingTransferOffer(
+    int Age, int Overall, int ClubTier, bool Upgrade,
+    int Goals, int Assists, int Tackles, int CleanSheets, int LeaguePosition);
+
+/// <summary>
+/// Resultado de rodar a carreira até a próxima decisão pendente, ou até o fim.
+/// Existe porque SimulateCareer exige TransferChoices completo de antemão; AdvanceCareer
+/// permite alimentar essas decisões uma a uma (fluxo interativo de /careers/advance).
+/// </summary>
+public sealed class CareerProgress
+{
+    public required CareerResult Result { get; init; }
+    public PendingTransferOffer? PendingOffer { get; init; }
+    public bool AwaitingDecision => PendingOffer is not null;
+}
