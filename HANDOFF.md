@@ -234,12 +234,31 @@ essa propriedade que se perderia.
    período, ou commit-reveal; ou aceitar o risco e mitigar limitando a UMA tentativa
    oficial por usuário/período — o que de qualquer forma só dá pra impor com o Postgres
    do passo 6, então essa decisão pode esperar até lá).
-6. **Postgres.** Tabela de conquistas com `UNIQUE (user_id, period_type, period_key)` —
-   idempotência do job de fecho de período vem daí. Snapshot imutável no fecho,
-   nunca derivar ranking em tempo real (senão um rebalanceamento reescreve o passado).
-   Carreira referenciada por conquista nunca pode ser apagada, só arquivada.
-   **Não iniciado** — sem Postgres/docker disponíveis no ambiente onde isto foi escrito
-   para testar de verdade; confirmar antes de gerar migrations às cegas.
+6. **Postgres.** **Código pronto na branch `feature/postgres-persistence`, NUNCA rodado
+   contra um Postgres de verdade** — este ambiente não tem Docker/psql, então a migration
+   foi gerada e o schema conferido lendo o SQL, não testado end-to-end. Confirmar isso
+   antes de confiar cegamente.
+   - `Varzea.Data`: `Player`, `CareerSlot` (a receita + `RulesetVersion` + score
+     congelado — "regras invioláveis" da secção 2), `Achievement`.
+   - `CareerSlot`: índice único **parcial** em `(PlayerId, SlotIndex) WHERE NOT Archived`
+     — só um slot ativo por posição, mas a linha antiga sobrescrita não é apagada
+     (`Archived=true`), porque uma `Achievement` pode referenciá-la.
+   - `Achievement`: `UNIQUE (PlayerId, PeriodType, PeriodKey)`, exatamente como este
+     HANDOFF pede — dá idempotência ao job de fecho. FK pra `CareerSlot` com
+     `DeleteBehavior.Restrict`: apagar uma carreira referenciada por conquista falha no
+     banco, não é só uma convenção de código.
+   - `Seed` (`ulong`) vira `numeric(20,0)` — `bigint` do Postgres é 64-bit **com sinal**,
+     não cobre o range inteiro de `ulong`.
+   - `DraftPicks`/`TransferChoices` usam `integer[]`/`boolean[]` nativos do Npgsql, sem
+     tabela auxiliar.
+   - `Varzea.Api` referencia `Varzea.Data` mas só registra o `DbContext` se
+     `ConnectionStrings:Varzea` existir na configuração — sem isso a API roda exatamente
+     como antes (só calcula score, não persiste), pra não quebrar o fluxo já testado
+     num ambiente sem Postgres. `/careers/save` ganhou `PlayerId`/`SlotIndex` opcionais
+     (`PlayerId` é só FK provisória — não existe autenticação real ainda).
+   - **Sem migrar de verdade:** `dotnet ef database update` nunca rodou. Antes de usar
+     essa branch, confirmar que o schema gerado é o que se quer (ex.: se o job de fecho
+     de período vai rodar dentro da API ou como worker separado ainda não foi decidido).
 7. **Front React** consumindo. **Não iniciado** — o ambiente tinha Node v16.16 (EOL),
    vale checar/atualizar antes de escolher tooling (Vite moderno pede Node 18+).
 8. Slots de 10 geríveis + ecrã de palmarès. **Não iniciado.**

@@ -6,6 +6,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Varzea.Engine\Varzea.Engine.csproj" />
+    <ProjectReference Include="..\Varzea.Data\Varzea.Data.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Varzea.Engine\Ruleset\balance.json" Link="Ruleset\balance.json">
