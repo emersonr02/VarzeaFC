@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
+import { dilemmaLine } from "../data/dilemmas";
 import {
   DOMESTIC_CUP_NAME,
   LEAGUE_NAME,
@@ -279,7 +280,11 @@ function moraleIcon(v: number): string {
 function moraleNote(season: SeasonResult): string | null {
   if (season.askedToLeave) return "😤 O clima no vestiário azedou — você deixou claro que quer sair.";
   if (season.declinedBiggerClub) return "❤️ Recusou uma proposta de fora e a torcida vibrou com a lealdade.";
-  if (season.moraleDilemma) return "🗣️ Um imprevisto nos bastidores mexeu com o humor do grupo.";
+  // Conteúdo variado dos dilemas (Roadmap §9 Bloco 2, corte de escopo fechado) — antes
+  // era uma mensagem genérica única.
+  if (season.moraleDilemma && season.dilemmaTarget !== "None") {
+    return dilemmaLine(season.dilemmaTarget, season.dilemmaPositive, season.dilemmaVariant);
+  }
   return null;
 }
 
@@ -289,6 +294,7 @@ function requestNote(season: SeasonResult): string | null {
   switch (season.requestMade) {
     case "None": return null;
     case "RequestLeaveAtContractEnd": return "📣 Avisou o clube: vai embora quando o contrato acabar.";
+    case "RequestLeaveNow": return "🚪 Pediu pra sair JÁ — o empresário saiu correndo atrás de propostas.";
     case "RequestRenewal": return season.requestGranted ? "📝 Pediu renovação antecipada — aceita!" : "📝 Pediu renovação antecipada — recusada.";
     case "RequestRaise": return season.requestGranted ? "💰 Pediu aumento — aceito!" : "💰 Pediu aumento — negado.";
     case "RequestCaptaincy": return season.requestGranted ? "🎖️ Pediu a braçadeira — agora é o capitão!" : "🎖️ Pediu a braçadeira — não rolou desta vez.";
@@ -407,6 +413,7 @@ function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <RequestButton kind="RequestRenewal" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
           <RequestButton kind="RequestLeaveAtContractEnd" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          <RequestButton kind="RequestLeaveNow" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
           <RequestButton kind="RequestRaise" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
         </div>
       </div>

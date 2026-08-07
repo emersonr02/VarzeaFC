@@ -37,8 +37,14 @@ public enum SeasonRequestKind
     RequestLeaveAtContractEnd,  // avisa que quer sair quando o contrato atual vencer
     RequestRaise,                // pede aumento — sem sistema de dinheiro, afeta só moral
     RequestCaptaincy,            // pede a braçadeira — concessão fica pra sempre
-    RequestSetPieces             // pede bolas paradas — concessão fica pra sempre, sobe gols/assist.
+    RequestSetPieces,            // pede bolas paradas — concessão fica pra sempre, sobe gols/assist.
+    RequestLeaveNow              // pede pra sair JÁ (corte de escopo do Bloco 2 fechado) — busca oferta garantida, custa moral
 }
+
+/// <summary>Qual valor de moral um "dilema fictício" mexeu nesta temporada (Roadmap §9
+/// Bloco 2, corte de escopo fechado) — deixa o front escolher um texto variado em vez de
+/// uma mensagem genérica única.</summary>
+public enum DilemmaTarget { None, Team, Coach, Crowd }
 
 /// <summary>
 /// A "receita" da carreira. É ISTO que vai pro banco quando o usuário salva —
@@ -90,13 +96,17 @@ public sealed class SeasonResult
     /// moral (decisão do produto, Roadmap §9 Bloco 2). O front usa isto pra narrar.</summary>
     public bool DeclinedBiggerClub { get; init; }
 
-    /// <summary>
-    /// Versão inicial de "dilemas fictícios" (Roadmap §9 Bloco 2): um evento aleatório
-    /// de vestiário/torcida mexeu na moral fora do fluxo de transferência. Só o sinal
-    /// numérico existe ainda — o conteúdo narrativo (textos variados por dilema) fica
-    /// como próximo passo; o front hoje mostra uma mensagem genérica quando true.
-    /// </summary>
+    /// <summary>Um evento aleatório de vestiário/torcida mexeu na moral fora do fluxo de
+    /// transferência (Roadmap §9 Bloco 2).</summary>
     public bool MoraleDilemma { get; init; }
+
+    /// <summary>Qual valor o dilema mexeu (None quando MoraleDilemma é false), se foi pra
+    /// cima ou pra baixo, e uma variante (0-2) pro front escolher entre textos diferentes
+    /// pro mesmo alvo/direção — fecha o corte de escopo "conteúdo narrativo variado" do
+    /// Bloco 2.</summary>
+    public DilemmaTarget DilemmaTarget { get; init; }
+    public bool DilemmaPositive { get; init; }
+    public int DilemmaVariant { get; init; }
 
     /// <summary>
     /// Versão inicial de "jogador pode pedir pra sair" (Roadmap §9 Bloco 2): dispara

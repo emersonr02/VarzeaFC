@@ -112,16 +112,15 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
         : state.TransferChoices;
 
     // SeasonRequests indexa por seasonIndex do motor (uma entrada por temporada
-    // SIMULADA, não por chamada de API) — e uma única chamada pode revelar VÁRIAS
-    // temporadas de uma vez quando não há pausa de oferta no meio (ver Sim.tsx:
-    // fetchMore devolve todas as temporadas até a próxima pausa ou o fim). Por isso não
-    // dá pra só "acrescentar uma entrada por chamada": alinhamos pelo SeasonsRevealed já
-    // existente (== Timeline.Count), que é o único contador confiável de "quantas
-    // temporadas já fecharam". Truncar/preencher pra esse tamanho ANTES de anexar o
-    // pedido do jogador garante que ele cai exatamente na primeira temporada nova que
-    // esta chamada vai revelar — e não deslocaria pedidos já consumidos em replays
-    // anteriores se simplesmente incrementássemos por chamada.
-    var baseRequests = AlignedTo(state.SeasonRequests, state.SeasonsRevealed);
+    // SIMULADA, não por chamada de API): o próprio COMPRIMENTO do array é "quantas
+    // temporadas já tiveram seu pedido decidido", esteja essa temporada fechada em
+    // Timeline ou ainda pausada numa oferta. Numa chamada "de verdade" (nem Decision nem
+    // ContractChoiceIndex), sempre anexamos exatamente UMA entrada — nunca truncamos o
+    // que já existe: truncar jogaria fora o pedido que uma temporada AINDA PAUSADA já
+    // consumiu dentro do motor (bug real encontrado nesta sessão: RequestLeaveNow numa
+    // temporada que pausa na hora perdia o pedido na chamada seguinte, porque o
+    // realinhamento pós-chamada usava só Timeline.Count, que não conta a pausada).
+    var baseRequests = state.SeasonRequests ?? Array.Empty<SeasonRequestKind>();
     var seasonRequests = req.Decision is null
         ? baseRequests.Append(req.Request ?? SeasonRequestKind.None).ToArray()
         : baseRequests;
@@ -129,16 +128,17 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
     var recipe = new CareerRecipe(state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion, seasonRequests);
     var progress = simulator.AdvanceCareer(recipe);
 
-    // A temporada pausada (se houver) já consumiu seu próprio slot de SeasonRequests
-    // dentro do motor (fora dos limites do array = None), mas não entra em Timeline até
-    // ser resolvida — então NÃO preenchemos um slot extra pra ela aqui. Preencher só até
-    // Timeline.Count (temporadas de fato fechadas) é o que mantém essa temporada pausada
-    // lendo None de forma consistente em todo replay futuro, até ela mesma fechar.
-    int newTotal = progress.Result.Timeline.Count;
-    seasonRequests = AlignedTo(seasonRequests, newTotal);
+    // Uma única chamada pode revelar VÁRIAS temporadas de uma vez quando não há pausa no
+    // meio (fetchMore no front devolve tudo até a próxima pausa ou o fim) — então
+    // completamos com None até Timeline.Count + (1 se ainda restou uma pausa pendente),
+    // SEM NUNCA encolher o array. Isso garante que o próximo pedido explícito caia
+    // exatamente na primeira temporada realmente nova, sem deslocar nada já decidido.
+    int consumedSlots = progress.Result.Timeline.Count + (progress.PendingOffer is not null ? 1 : 0);
+    if (seasonRequests.Length < consumedSlots)
+        seasonRequests = seasonRequests.Concat(Enumerable.Repeat(SeasonRequestKind.None, consumedSlots - seasonRequests.Length)).ToArray();
 
     var newSeasons = progress.Result.Timeline.Skip(state.SeasonsRevealed).ToList();
-    var next = state with { TransferChoices = choices, SeasonsRevealed = newTotal, SeasonRequests = seasonRequests };
+    var next = state with { TransferChoices = choices, SeasonsRevealed = progress.Result.Timeline.Count, SeasonRequests = seasonRequests };
 
     return Results.Ok(new AdvanceResponse(
         tokens.Issue(next), newSeasons, progress.PendingOffer, Finished: !progress.AwaitingDecision));
@@ -245,14 +245,3 @@ static ulong NextSeed()
 
 static List<LegendOption> ToOptions(IReadOnlyList<Legend> candidates, Attr attr) =>
     candidates.Select(l => new LegendOption(l.Name, l.Get(attr))).ToList();
-
-/// <summary>Trunca ou preenche com None até exatamente `length` entradas — usado pra
-/// manter SeasonRequests alinhado ao contador de temporadas fechadas (SeasonsRevealed /
-/// Timeline.Count) antes e depois de cada /careers/advance. Ver comentário no handler.</summary>
-static SeasonRequestKind[] AlignedTo(SeasonRequestKind[]? requests, int length)
-{
-    var r = requests ?? Array.Empty<SeasonRequestKind>();
-    if (r.Length == length) return r;
-    if (r.Length > length) return r.Take(length).ToArray();
-    return r.Concat(Enumerable.Repeat(SeasonRequestKind.None, length - r.Length)).ToArray();
-}

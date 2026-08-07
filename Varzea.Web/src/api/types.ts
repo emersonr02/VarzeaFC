@@ -14,7 +14,9 @@ export type TitleKind =
 // Painel Contrato + Técnico (roadmap pós-§9) — um pedido por temporada.
 export type SeasonRequestKind =
   | "None" | "RequestRenewal" | "RequestLeaveAtContractEnd" | "RequestRaise"
-  | "RequestCaptaincy" | "RequestSetPieces";
+  | "RequestCaptaincy" | "RequestSetPieces" | "RequestLeaveNow";
+
+export type DilemmaTarget = "None" | "Team" | "Coach" | "Crowd";
 
 export interface MetaResponse {
   rulesetVersion: string;
@@ -73,6 +75,9 @@ export interface SeasonResult {
   declinedBiggerClub: boolean;
   moraleDilemma: boolean;
   askedToLeave: boolean;
+  dilemmaTarget: DilemmaTarget;
+  dilemmaPositive: boolean;
+  dilemmaVariant: number;
   // Contrato (Roadmap §9 Bloco 3)
   contractExpiring: boolean;
   contractRenewed: boolean;

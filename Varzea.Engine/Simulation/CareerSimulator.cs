@@ -209,6 +209,10 @@ public sealed class CareerSimulator
             // mesma temporada, não só a partir da próxima. Um pedido por temporada.
             var request = seasonIndex < requests.Length ? requests[seasonIndex] : SeasonRequestKind.None;
             bool requestGranted = false;
+            // Só vale NESTA temporada — declarado aqui (não com os loop-locals antes do
+            // for) porque, ao contrário de wantsToLeaveAtContractEnd, não precisa
+            // sobreviver até uma condição futura.
+            bool forceOfferSearch = false;
             switch (request)
             {
                 case SeasonRequestKind.RequestRenewal:
@@ -267,6 +271,18 @@ public sealed class CareerSimulator
                         requestGranted = rng.Chance(spChance);
                         if (requestGranted) hasSetPieces = true;
                     }
+                    break;
+                case SeasonRequestKind.RequestLeaveNow:
+                    // Corte de escopo do Bloco 2 fechado: em vez do gatilho automático por
+                    // moral baixa sustentada (moralPressure, já existente), o jogador pode
+                    // pedir pra sair JÁ. Busca garantida (não só chance maior) — resolvida
+                    // no bloco "--- CONTRATO / TRANSFERÊNCIA ---" mais abaixo. A ação em si
+                    // prejudica a relação, concedida ou não a busca (texto original do
+                    // Bloco 2: "a ação em si prejudica a relação").
+                    forceOfferSearch = true;
+                    requestGranted = true;
+                    teamMorale = Math.Clamp(teamMorale - 0.08, -1.0, 1.0);
+                    coachMorale = Math.Clamp(coachMorale - 0.10, -1.0, 1.0);
                     break;
             }
             seasonIndex++;
@@ -479,8 +495,14 @@ public sealed class CareerSimulator
                 // (Bloco 2), MAIS uma chance de "olheiro" proporcional ao nível do jogador
                 // (Roadmap §9 Bloco 3: "propostas chegam frequentemente fora da expiração,
                 // proporcional ao nível do jogador") — antes só o gatilho de perf existia.
+                // forceOfferSearch (RequestLeaveNow, corte do Bloco 2): busca garantida,
+                // não só chance maior — tem prioridade sobre os gatilhos probabilísticos.
+                // Se o contrato expira NESSA MESMA temporada, o bloco "if (contractExpiring)"
+                // acima já assume — o pedido fica absorvido pelo fluxo de contrato (raro,
+                // aceitável: os dois significam "quero sair" de qualquer forma).
                 double scoutingChance = Math.Clamp((overall - 70) / 200.0, 0, 0.15);
-                if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
+                if (forceOfferSearch) { offer = true; upgrade = overall >= target; }
+                else if (perf > 14 && tier < 5 && rng.Chance(0.45)) { offer = true; upgrade = true; }
                 else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30))
                 { offer = true; upgrade = false; }
                 else if (tier < 5 && rng.Chance(scoutingChance)) { offer = true; upgrade = true; }
@@ -550,19 +572,23 @@ public sealed class CareerSimulator
             // temporada como capitão — orgulho/liderança, sem revogação.
             if (isCaptain) { teamMorale = Math.Clamp(teamMorale + 0.03, -1.0, 1.0); }
 
-            // "Dilemas fictícios" — versão inicial (Roadmap §9 Bloco 2): só o sinal
-            // numérico existe ainda. Conteúdo narrativo variado fica como próximo passo
-            // (ver nota em Domain.cs.SeasonResult.MoraleDilemma); o front hoje mostra uma
-            // mensagem genérica quando a flag vem true.
+            // "Dilemas fictícios" (Roadmap §9 Bloco 2, corte de escopo fechado): expõe QUAL
+            // valor mexeu, se foi pra cima ou pra baixo, e uma variante — o front escolhe
+            // entre textos diferentes (data/dilemmas.ts) em vez de uma mensagem genérica.
             bool moraleDilemma = rng.Chance(0.12);
+            var dilemmaTarget = DilemmaTarget.None;
+            bool dilemmaPositive = false;
+            int dilemmaVariant = 0;
             if (moraleDilemma)
             {
                 double swing = rng.NextDouble() * 0.30 - 0.15;
+                dilemmaPositive = swing >= 0;
+                dilemmaVariant = rng.NextInt(0, 2);
                 switch (rng.NextInt(0, 2))
                 {
-                    case 0: teamMorale += swing; break;
-                    case 1: coachMorale += swing; break;
-                    default: crowdMorale += swing; break;
+                    case 0: teamMorale += swing; dilemmaTarget = DilemmaTarget.Team; break;
+                    case 1: coachMorale += swing; dilemmaTarget = DilemmaTarget.Coach; break;
+                    default: crowdMorale += swing; dilemmaTarget = DilemmaTarget.Crowd; break;
                 }
             }
 
@@ -605,6 +631,7 @@ public sealed class CareerSimulator
                 HadTransferOffer = offer, AcceptedTransfer = accepted,
                 TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                 DeclinedBiggerClub = declinedBiggerClub, MoraleDilemma = moraleDilemma, AskedToLeave = askedToLeave,
+                DilemmaTarget = dilemmaTarget, DilemmaPositive = dilemmaPositive, DilemmaVariant = dilemmaVariant,
                 ContractExpiring = contractExpiring, ContractRenewed = contractRenewed,
                 ContractYearsRemaining = Math.Max(0, contractDuration - contractYear),
                 IsCaptain = isCaptain, HasSetPieces = hasSetPieces,
