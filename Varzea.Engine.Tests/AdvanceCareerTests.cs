@@ -31,7 +31,12 @@ public class AdvanceCareerTests
         // no máximo uma oferta por temporada) — diferente do array de 12 usado noutros
         // testes, que existe só pra exercitar o "acabaram as decisões" do modo batch.
         TransferChoices: Enumerable.Range(0, 40).Select(i => i % 3 != 0).ToArray(),
-        RulesetVersion: Rules.Version
+        RulesetVersion: Rules.Version,
+        SeasonRequests: null,
+        // Cicla 0,1,2 — GenerateContractProposals gera 1-3 propostas, então às vezes o
+        // índice fica fora dos limites (o motor já trata isso como "recusou todas", ver
+        // CareerSimulator) — não precisa ser sempre válido, só determinístico.
+        ContractChoices: Enumerable.Range(0, 40).Select(i => i % 3).ToArray()
     );
 
     /// <summary>
@@ -55,19 +60,34 @@ public class AdvanceCareerTests
     }
 
     /// <summary>Simula exatamente o que a API faz: acumula decisões uma a uma, cada
-    /// vez que AdvanceCareer pausa numa oferta pendente.</summary>
+    /// vez que AdvanceCareer pausa numa oferta pendente — agora em DOIS arrays
+    /// separados, já que PendingOffer (bool) e PendingContractChoice (índice) são tipos
+    /// de pausa mutuamente exclusivos, cada um com sua própria fonte de decisões
+    /// pré-fabricadas (TransferChoices / ContractChoices de FullRecipe).</summary>
     private static (CareerResult Result, int PauseCount) AdvanceToCompletion(CareerSimulator sim, CareerRecipe full)
     {
         var decided = new List<bool>();
+        var contractDecided = new List<int>();
         int pauses = 0;
         while (true)
         {
-            var progress = sim.AdvanceCareer(full with { TransferChoices = decided.ToArray() });
+            var progress = sim.AdvanceCareer(full with
+            {
+                TransferChoices = decided.ToArray(),
+                ContractChoices = contractDecided.ToArray()
+            });
             if (!progress.AwaitingDecision) return (progress.Result, pauses);
 
             pauses++;
-            Assert.NotNull(progress.PendingOffer);
-            decided.Add(full.TransferChoices[decided.Count]);
+            if (progress.PendingOffer is not null)
+            {
+                decided.Add(full.TransferChoices[decided.Count]);
+            }
+            else
+            {
+                Assert.NotNull(progress.PendingContractChoice);
+                contractDecided.Add(full.ContractChoices![contractDecided.Count]);
+            }
         }
     }
 
@@ -95,10 +115,13 @@ public class AdvanceCareerTests
         var sim = new CareerSimulator(Rules);
         var recipe = FullRecipe(42);
 
-        var progress = sim.AdvanceCareer(recipe with { TransferChoices = Array.Empty<bool>() });
+        var progress = sim.AdvanceCareer(recipe with { TransferChoices = Array.Empty<bool>(), ContractChoices = Array.Empty<int>() });
         Assert.True(progress.AwaitingDecision);
 
-        var pending = progress.PendingOffer!;
-        Assert.DoesNotContain(progress.Result.Timeline, s => s.Age == pending.Age);
+        // A primeira pausa desta seed pode ser PendingOffer OU PendingContractChoice
+        // (não-renovação agora gera propostas múltiplas, ver Domain.cs) — o que este
+        // teste garante vale pros dois: a temporada pendente não aparece no Timeline.
+        int pendingAge = progress.PendingOffer?.Age ?? progress.PendingContractChoice!.Age;
+        Assert.DoesNotContain(progress.Result.Timeline, s => s.Age == pendingAge);
     }
 }

@@ -23,14 +23,19 @@ public sealed record PositionRequest(string Token, Pos Position, string Country)
 
 public sealed record PositionLockedResponse(string Token, int Potential, string Role);
 
-/// <summary>Request só é anexado a SeasonRequests quando Decision é null — ver
-/// /careers/advance. Enviar Decision (resolvendo uma oferta pendente) e Request no
-/// mesmo POST não faz sentido: o pedido é feito ANTES de avançar pra próxima temporada,
-/// nunca junto da resposta a uma oferta que já surgiu na temporada corrente.</summary>
-public sealed record AdvanceRequest(string Token, bool? Decision, SeasonRequestKind? Request = null);
+/// <summary>Request só é anexado a SeasonRequests quando Decision e ContractChoiceIndex
+/// são ambos null — ver /careers/advance. Enviar Request junto de uma resolução de
+/// pausa não faz sentido: o pedido é feito ANTES de avançar pra próxima temporada, nunca
+/// junto da resposta a uma pausa que já surgiu na temporada corrente. Decision resolve
+/// PendingOffer; ContractChoiceIndex resolve PendingContractChoice (Roadmap §9 Bloco 3,
+/// "múltiplas propostas") — nunca os dois preenchidos no mesmo POST, já que os dois
+/// tipos de pausa são mutuamente exclusivos (CareerProgress.AwaitingDecision).</summary>
+public sealed record AdvanceRequest(
+    string Token, bool? Decision, SeasonRequestKind? Request = null, int? ContractChoiceIndex = null);
 
 public sealed record AdvanceResponse(
-    string Token, IReadOnlyList<SeasonResult> NewSeasons, PendingTransferOffer? PendingOffer, bool Finished);
+    string Token, IReadOnlyList<SeasonResult> NewSeasons, PendingTransferOffer? PendingOffer,
+    PendingContractChoice? PendingContractChoice, bool Finished);
 
 /// <summary>
 /// PlayerId e SlotIndex são opcionais: sem eles (ou sem Postgres configurado),

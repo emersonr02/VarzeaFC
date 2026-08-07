@@ -111,37 +111,56 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
         ? state.TransferChoices.Append(decision).ToArray()
         : state.TransferChoices;
 
+    // Mesmo padrão de TransferChoices, mas pra PendingContractChoice (Roadmap §9 Bloco 3,
+    // "múltiplas propostas"): ContractChoiceIndex vira a próxima entrada de
+    // ContractChoices, indexado por contractChoiceIdx do motor (que só avança quando uma
+    // pausa desse tipo é resolvida) — sem necessidade do padding especial que
+    // SeasonRequests precisa, porque essa contagem nunca "adianta" pra uma temporada
+    // ainda não vista, ao contrário do seasonIndex.
+    var contractChoices = req.ContractChoiceIndex is { } contractChoiceIndex
+        ? (state.ContractChoices ?? Array.Empty<int>()).Append(contractChoiceIndex).ToArray()
+        : state.ContractChoices ?? Array.Empty<int>();
+
     // SeasonRequests indexa por seasonIndex do motor (uma entrada por temporada
     // SIMULADA, não por chamada de API): o próprio COMPRIMENTO do array é "quantas
     // temporadas já tiveram seu pedido decidido", esteja essa temporada fechada em
-    // Timeline ou ainda pausada numa oferta. Numa chamada "de verdade" (nem Decision nem
-    // ContractChoiceIndex), sempre anexamos exatamente UMA entrada — nunca truncamos o
-    // que já existe: truncar jogaria fora o pedido que uma temporada AINDA PAUSADA já
-    // consumiu dentro do motor (bug real encontrado nesta sessão: RequestLeaveNow numa
-    // temporada que pausa na hora perdia o pedido na chamada seguinte, porque o
+    // Timeline ou ainda pausada numa oferta/proposta. Numa chamada "de verdade" (nem
+    // Decision nem ContractChoiceIndex), sempre anexamos exatamente UMA entrada — nunca
+    // truncamos o que já existe: truncar jogaria fora o pedido que uma temporada AINDA
+    // PAUSADA já consumiu dentro do motor (bug real encontrado nesta sessão: RequestLeaveNow
+    // numa temporada que pausa na hora perdia o pedido na chamada seguinte, porque o
     // realinhamento pós-chamada usava só Timeline.Count, que não conta a pausada).
+    bool resolvingPause = req.Decision is not null || req.ContractChoiceIndex is not null;
     var baseRequests = state.SeasonRequests ?? Array.Empty<SeasonRequestKind>();
-    var seasonRequests = req.Decision is null
-        ? baseRequests.Append(req.Request ?? SeasonRequestKind.None).ToArray()
-        : baseRequests;
+    var seasonRequests = resolvingPause
+        ? baseRequests
+        : baseRequests.Append(req.Request ?? SeasonRequestKind.None).ToArray();
 
-    var recipe = new CareerRecipe(state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion, seasonRequests);
+    var recipe = new CareerRecipe(
+        state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion,
+        seasonRequests, contractChoices);
     var progress = simulator.AdvanceCareer(recipe);
 
     // Uma única chamada pode revelar VÁRIAS temporadas de uma vez quando não há pausa no
     // meio (fetchMore no front devolve tudo até a próxima pausa ou o fim) — então
-    // completamos com None até Timeline.Count + (1 se ainda restou uma pausa pendente),
-    // SEM NUNCA encolher o array. Isso garante que o próximo pedido explícito caia
-    // exatamente na primeira temporada realmente nova, sem deslocar nada já decidido.
-    int consumedSlots = progress.Result.Timeline.Count + (progress.PendingOffer is not null ? 1 : 0);
+    // completamos com None até Timeline.Count + (1 se ainda restou QUALQUER pausa
+    // pendente, oferta ou proposta), SEM NUNCA encolher o array. Isso garante que o
+    // próximo pedido explícito caia exatamente na primeira temporada realmente nova, sem
+    // deslocar nada já decidido.
+    int consumedSlots = progress.Result.Timeline.Count + (progress.AwaitingDecision ? 1 : 0);
     if (seasonRequests.Length < consumedSlots)
         seasonRequests = seasonRequests.Concat(Enumerable.Repeat(SeasonRequestKind.None, consumedSlots - seasonRequests.Length)).ToArray();
 
     var newSeasons = progress.Result.Timeline.Skip(state.SeasonsRevealed).ToList();
-    var next = state with { TransferChoices = choices, SeasonsRevealed = progress.Result.Timeline.Count, SeasonRequests = seasonRequests };
+    var next = state with
+    {
+        TransferChoices = choices, ContractChoices = contractChoices,
+        SeasonsRevealed = progress.Result.Timeline.Count, SeasonRequests = seasonRequests
+    };
 
     return Results.Ok(new AdvanceResponse(
-        tokens.Issue(next), newSeasons, progress.PendingOffer, Finished: !progress.AwaitingDecision));
+        tokens.Issue(next), newSeasons, progress.PendingOffer, progress.PendingContractChoice,
+        Finished: !progress.AwaitingDecision));
 });
 
 app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
@@ -156,7 +175,7 @@ app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
     // transferência por vir, SimulateCareer trata como recusada (mesmo fallback de sempre).
     var recipe = new CareerRecipe(
         state.Seed, state.Country, state.DraftPicks, state.Position.Value,
-        state.TransferChoices, state.RulesetVersion, state.SeasonRequests);
+        state.TransferChoices, state.RulesetVersion, state.SeasonRequests, state.ContractChoices);
     var result = simulator.SimulateCareer(recipe);
     var score = scorer.Score(result);
 

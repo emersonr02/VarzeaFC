@@ -17,5 +17,9 @@ public sealed record CareerState(
     int SeasonsRevealed = 0,
     /// <summary>Pedidos do painel Contrato + Técnico, um por temporada — ver
     /// AdvanceRequest.Request e CareerRecipe.SeasonRequests.</summary>
-    SeasonRequestKind[]? SeasonRequests = null
+    SeasonRequestKind[]? SeasonRequests = null,
+    /// <summary>Índices de propostas escolhidas quando o contrato vence sem renovação
+    /// (Roadmap §9 Bloco 3, "múltiplas propostas") — ver AdvanceRequest.ContractChoiceIndex
+    /// e CareerRecipe.ContractChoices.</summary>
+    int[]? ContractChoices = null
 );

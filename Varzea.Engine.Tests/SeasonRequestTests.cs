@@ -73,6 +73,11 @@ public class SeasonRequestTests
         AdvanceToCompletion(CareerSimulator sim, CareerRecipe baseRecipe)
     {
         var decided = new List<bool>();
+        // Este teste não exercita ContractChoices (isso já tem cobertura dedicada em
+        // AdvanceCareerTests.FullRecipe) — sempre recusa todas as propostas (-1, fora
+        // dos limites), o mesmo comportamento que SimulateCareer teria em lote com
+        // ContractChoices null/vazio, então a equivalência abaixo continua válida.
+        var contractDecided = new List<int>();
         var seasonRequests = Array.Empty<SeasonRequestKind>();
         int pauses = 0, realCalls = 0;
         // true só na chamada IMEDIATAMENTE seguinte a uma pausa — resolve a decisão
@@ -98,13 +103,18 @@ public class SeasonRequestTests
                 callRequests = seasonRequests.Append(next).ToArray();
             }
 
-            var recipe = baseRecipe with { TransferChoices = decided.ToArray(), SeasonRequests = callRequests };
+            var recipe = baseRecipe with
+            {
+                TransferChoices = decided.ToArray(),
+                ContractChoices = contractDecided.ToArray(),
+                SeasonRequests = callRequests
+            };
             var progress = sim.AdvanceCareer(recipe);
 
             // +1 quando sobra uma pausa: essa temporada já consumiu seu slot dentro do
             // motor, mas não entra em Timeline até ser resolvida — sem esse +1, a
             // próxima chamada (se também for "de verdade") sobrescreveria esse pedido.
-            int consumedSlots = progress.Result.Timeline.Count + (progress.PendingOffer is not null ? 1 : 0);
+            int consumedSlots = progress.Result.Timeline.Count + (progress.AwaitingDecision ? 1 : 0);
             seasonRequests = callRequests.Length < consumedSlots
                 ? callRequests.Concat(Enumerable.Repeat(SeasonRequestKind.None, consumedSlots - callRequests.Length)).ToArray()
                 : callRequests;
@@ -113,8 +123,15 @@ public class SeasonRequestTests
 
             pauses++;
             resolvingDecisionNow = true;
-            Assert.NotNull(progress.PendingOffer);
-            decided.Add(baseRecipe.TransferChoices[decided.Count]);
+            if (progress.PendingOffer is not null)
+            {
+                decided.Add(baseRecipe.TransferChoices[decided.Count]);
+            }
+            else
+            {
+                Assert.NotNull(progress.PendingContractChoice);
+                contractDecided.Add(-1);
+            }
         }
     }
 
@@ -198,6 +215,56 @@ public class SeasonRequestTests
 
         var result = sim.SimulateCareer(recipe);
         Assert.Contains(result.Timeline, s => s.HasSetPieces);
+    }
+
+    /// <summary>
+    /// Mecânica de PendingContractChoice (Roadmap §9 Bloco 3, corte "múltiplas
+    /// propostas"): confirma que aceitar/recusar de fato faz o motor fazer coisas
+    /// diferentes, não só que passo-a-passo e lote batem (isso já é coberto por
+    /// AdvanceCareerTests.StepByStep_MatchesBatchSimulation com FullRecipe.ContractChoices).
+    /// </summary>
+    [Fact]
+    public void ContractChoice_AcceptedProposal_ChangesTier_DeclinedProposal_KeepsTier()
+    {
+        var sim = new CareerSimulator(Rules);
+        var alwaysLeave = Enumerable.Repeat(SeasonRequestKind.RequestLeaveAtContractEnd, 25).ToArray();
+        // TransferChoices vazio (nunca aceita nenhuma oferta fora do ciclo) — aceitar
+        // uma dessas TAMBÉM reseta o relógio do contrato (mesmo bloco de reset do
+        // contrato natural, ver CareerSimulator), o que empurraria a primeira expiração
+        // pra muito mais tarde na carreira (jogador já veterano) e faria as durações de
+        // aceitar/recusar coincidirem por coincidência de faixa etária, não pela
+        // mecânica que este teste quer provar.
+        var baseRecipe = BaseRecipe(1) with { SeasonRequests = alwaysLeave, TransferChoices = Array.Empty<bool>() };
+
+        var accepted = sim.SimulateCareer(baseRecipe with { ContractChoices = Enumerable.Repeat(0, 25).ToArray() });
+        var declined = sim.SimulateCareer(baseRecipe with { ContractChoices = Enumerable.Repeat(-1, 25).ToArray() });
+
+        // A duração do PRIMEIRO contrato (NextContractDuration, sorteado antes de
+        // qualquer escolha) depende só de idade/pico/aposentadoria — então a primeira
+        // expiração cai na mesma temporada nas duas carreiras. Dali em diante as
+        // durações divergem (recusar sempre gera contrato curto de "prova", ver
+        // CareerSimulator), então só a primeira expiração é comparável 1:1.
+        var declinedExpiringIdx = Enumerable.Range(0, declined.Timeline.Count)
+            .Where(i => declined.Timeline[i].ContractExpiring).ToList();
+        var acceptedExpiringIdx = Enumerable.Range(0, accepted.Timeline.Count)
+            .Where(i => accepted.Timeline[i].ContractExpiring).ToList();
+        Assert.NotEmpty(declinedExpiringIdx);
+        Assert.NotEmpty(acceptedExpiringIdx);
+        Assert.Equal(declinedExpiringIdx[0], acceptedExpiringIdx[0]);
+
+        int first = declinedExpiringIdx[0];
+        int tierBeforeFirst = first > 0 ? declined.Timeline[first - 1].ClubTier : declined.Timeline[first].ClubTier;
+
+        // Recusar mantém o tier (contrato curto de "prova")...
+        Assert.Equal(tierBeforeFirst, declined.Timeline[first].ClubTier);
+
+        // ...e recusar sempre gera um contrato de no máximo 2 temporadas, enquanto
+        // aceitar dá um contrato normal (NextContractDuration — 3+ temporadas nesta
+        // idade, jovem, bem antes do pico). Comparar ContractYearsRemaining em vez de
+        // ClubTier evita falso-negativo quando o tier já está num limite (1 ou 5) e o
+        // clamp da proposta de "upgrade" não muda nada.
+        Assert.True(declined.Timeline[first].ContractYearsRemaining <= 2);
+        Assert.True(accepted.Timeline[first].ContractYearsRemaining > 2);
     }
 
     [Fact]

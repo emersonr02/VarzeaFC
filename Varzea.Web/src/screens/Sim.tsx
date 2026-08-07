@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
+import type { PendingContractChoice, Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
 import { dilemmaLine } from "../data/dilemmas";
 import {
@@ -16,6 +16,9 @@ import { INJURY_LABEL, POS_LABEL, SEASON_REQUEST_BUTTON_LABEL, TITLE_LABEL } fro
 interface DisplayedClip {
   data: ClipData;
   resolvedAccept?: boolean;
+  // Roadmap §9 Bloco 3, "múltiplas propostas": índice da proposta aceita (kind
+  // "contractChoice"), ou -1 quando recusou todas.
+  resolvedChoiceIndex?: number;
 }
 
 interface Props {
@@ -52,6 +55,9 @@ export function Sim({ nickname, country, position, role, potential, initialToken
 
   function dashFrom(c: ClipData) {
     if (c.kind === "offer") return { age: c.offer.age, overall: c.offer.overall, clubTier: c.offer.clubTier };
+    // PendingContractChoice não carrega o clubTier atual (as propostas têm o tier DELAS,
+    // não o de origem) — mantém o último tier conhecido no dash até a escolha resolver.
+    if (c.kind === "contractChoice") return { age: c.choice.age, overall: c.choice.overall, clubTier: dash?.clubTier ?? 1 };
     return { age: c.season.age, overall: c.season.overall, clubTier: c.season.clubTier };
   }
 
@@ -60,11 +66,25 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   // em sequência sem esperar um re-render entre uma chamada e outra; se lesse `token` do
   // estado, todas as chamadas do laço usariam o MESMO token antigo (setState não é
   // síncrono) e cada avanço pisaria no anterior em vez de continuar dele.
-  async function fetchMore(currentToken: string, decision?: boolean, request?: SeasonRequestKind) {
-    const resp = await api.advance(currentToken, decision, request);
+  async function fetchMore(
+    currentToken: string,
+    decision?: boolean,
+    request?: SeasonRequestKind,
+    contractChoiceIndex?: number
+  ) {
+    const resp = await api.advance(currentToken, decision, request, contractChoiceIndex);
     const seasonClips = buildClipsForSeasons(resp.newSeasons);
+    // Mutuamente exclusivos (CareerProgress.AwaitingDecision) — no máximo um dos dois
+    // vem preenchido.
     const offerClip: ClipData[] = resp.pendingOffer ? [{ kind: "offer", offer: resp.pendingOffer }] : [];
-    return { clips: [...seasonClips, ...offerClip], finished: resp.finished, token: resp.token };
+    const contractClip: ClipData[] = resp.pendingContractChoice
+      ? [{ kind: "contractChoice", choice: resp.pendingContractChoice }]
+      : [];
+    return { clips: [...seasonClips, ...offerClip, ...contractClip], finished: resp.finished, token: resp.token };
+  }
+
+  function isPause(c: ClipData): c is Extract<ClipData, { kind: "offer" | "contractChoice" }> {
+    return c.kind === "offer" || c.kind === "contractChoice";
   }
 
   function popAndDisplay(nextQueue: ClipData[]) {
@@ -72,10 +92,10 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     const [head, ...rest] = nextQueue;
     setQueue(rest);
     setDash(dashFrom(head));
-    if (head.kind !== "offer") setLastSeason(head.season);
+    if (!isPause(head)) setLastSeason(head.season);
     setDisplayed((prev) => {
       const arr = [...prev, { data: head }];
-      if (head.kind === "offer") setAwaitingIndex(arr.length - 1);
+      if (isPause(head)) setAwaitingIndex(arr.length - 1);
       return arr;
     });
   }
@@ -128,6 +148,27 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     }
   }
 
+  // Roadmap §9 Bloco 3, "múltiplas propostas": index >= 0 aceita aquela proposta;
+  // -1 recusa todas (contrato curto de "prova" — mesmo padrão do motor).
+  async function handleContractChoice(index: number) {
+    if (awaitingIndex === null) return;
+    const idx = awaitingIndex;
+    setDisplayed((prev) => prev.map((d, i) => (i === idx ? { ...d, resolvedChoiceIndex: index } : d)));
+    setAwaitingIndex(null);
+    setLoading(true);
+    setError(null);
+    try {
+      const more = await fetchMore(token, undefined, undefined, index);
+      setToken(more.token);
+      setFinished(more.finished);
+      setQueue((q) => [...q, ...more.clips]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao decidir a proposta de contrato.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSkipAll() {
     setLoading(true);
     setError(null);
@@ -147,11 +188,23 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
           pendingQueue = [...pendingQueue, ...more.clips];
+        } else if (pendingQueue.length > 0 && pendingQueue[0].kind === "contractChoice") {
+          const choiceClip = pendingQueue.shift()!;
+          // Pulando tudo: aceita a primeira proposta de upgrade, se houver; senão recusa
+          // todas (-1) — mesmo espírito de "aceitar upgrade" que o pulo já faz pra ofertas.
+          const proposals = choiceClip.kind === "contractChoice" ? choiceClip.choice.proposals : [];
+          const upgradeIdx = proposals.findIndex((p) => p.upgrade);
+          const chosen = upgradeIdx >= 0 ? upgradeIdx : -1;
+          setDisplayed((prev) => [...prev, { data: choiceClip, resolvedChoiceIndex: chosen }]);
+          const more = await fetchMore(currentToken, undefined, undefined, chosen);
+          currentToken = more.token;
+          done = more.finished && more.clips.length === 0;
+          pendingQueue = [...pendingQueue, ...more.clips];
         } else if (pendingQueue.length > 0) {
           const clip = pendingQueue.shift()!;
           setDisplayed((prev) => [...prev, { data: clip }]);
           setDash(dashFrom(clip));
-          if (clip.kind !== "offer") setLastSeason(clip.season);
+          if (!isPause(clip)) setLastSeason(clip.season);
         } else {
           const more = await fetchMore(currentToken);
           currentToken = more.token;
@@ -200,7 +253,19 @@ export function Sim({ nickname, country, position, role, potential, initialToken
 
         <div className="ticker-wrap">
           {displayed.map((d, i) => (
-            <Clip key={i} clip={d.data} resolvedAccept={d.resolvedAccept} clubFor={clubFor} nickname={nickname} country={country} onAccept={() => handleDecision(true)} onDecline={() => handleDecision(false)} isAwaiting={awaitingIndex === i} />
+            <Clip
+              key={i}
+              clip={d.data}
+              resolvedAccept={d.resolvedAccept}
+              resolvedChoiceIndex={d.resolvedChoiceIndex}
+              clubFor={clubFor}
+              nickname={nickname}
+              country={country}
+              onAccept={() => handleDecision(true)}
+              onDecline={() => handleDecision(false)}
+              onChooseContract={handleContractChoice}
+              isAwaiting={awaitingIndex === i}
+            />
           ))}
           {displayed.length === 0 && !loading && (
             <p className="empty-msg">Clique em "Avançar" pra começar sua primeira temporada.</p>
@@ -225,21 +290,24 @@ export function Sim({ nickname, country, position, role, potential, initialToken
 }
 
 function Clip({
-  clip, resolvedAccept, isAwaiting, clubFor, nickname, country, onAccept, onDecline,
+  clip, resolvedAccept, resolvedChoiceIndex, isAwaiting, clubFor, nickname, country, onAccept, onDecline, onChooseContract,
 }: {
   clip: ClipData;
   resolvedAccept?: boolean;
+  resolvedChoiceIndex?: number;
   isAwaiting: boolean;
   clubFor: (tier: number) => string;
   nickname: string;
   country: string;
   onAccept: () => void;
   onDecline: () => void;
+  onChooseContract: (index: number) => void;
 }) {
   if (clip.kind === "final") return <FinalClip season={clip.season} title={clip.title} clubFor={clubFor} nickname={nickname} country={country} />;
   if (clip.kind === "season") return <SeasonClip season={clip.season} clubFor={clubFor} country={country} />;
   if (clip.kind === "awards") return <AwardsClip season={clip.season} />;
   if (clip.kind === "retire") return <div className="clip"><div className="season-tag">{clip.season.age} anos</div><div className="headline">Fim precoce da carreira</div><div className="body">Uma lesão grave encerra a carreira antes da hora. A torcida se despede com carinho.</div></div>;
+  if (clip.kind === "contractChoice") return <ContractChoiceClip choice={clip.choice} clubFor={clubFor} isAwaiting={isAwaiting} resolvedChoiceIndex={resolvedChoiceIndex} onChoose={onChooseContract} />;
   return <OfferClip offer={clip.offer} clubFor={clubFor} isAwaiting={isAwaiting} resolvedAccept={resolvedAccept} onAccept={onAccept} onDecline={onDecline} />;
 }
 
@@ -384,6 +452,41 @@ function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDec
       ) : (
         <div style={{ marginTop: 8, fontFamily: "var(--font-b)", fontWeight: 700, fontSize: 12, color: resolvedAccept ? "var(--blue)" : "var(--ink-soft)" }}>
           {resolvedAccept ? `✔ Assinado com ${toClub}` : "✔ Permaneceu no clube"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Roadmap §9 Bloco 3, "múltiplas propostas": até 3 clubes concretos aparecem quando o
+// contrato vence sem renovação — o jogador escolhe um ou recusa todas (contrato curto
+// de "prova", mesmo desfecho de recusar a proposta única de antes desta feature).
+function ContractChoiceClip({ choice, clubFor, isAwaiting, resolvedChoiceIndex, onChoose }: {
+  choice: PendingContractChoice;
+  clubFor: (t: number) => string;
+  isAwaiting: boolean;
+  resolvedChoiceIndex?: number;
+  onChoose: (index: number) => void;
+}) {
+  return (
+    <div className="clip clip-transfer">
+      <div className="season-tag">Fim de contrato · {choice.age} anos</div>
+      <div className="headline">Seu contrato venceu e o clube não renovou</div>
+      <div className="body">Chegaram propostas de fora. Escolha uma pra assinar ou recuse todas e tente provar seu valor num contrato curto.</div>
+      {isAwaiting ? (
+        <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
+          {choice.proposals.map((p, i) => (
+            <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
+              {p.upgrade ? "⬆️ " : ""}Assinar com {clubFor(p.clubTier)}
+            </button>
+          ))}
+          <button className="btn-mini decline" onClick={() => onChoose(-1)}>Recusar todas — contrato curto de prova</button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, fontFamily: "var(--font-b)", fontWeight: 700, fontSize: 12, color: resolvedChoiceIndex !== undefined && resolvedChoiceIndex >= 0 ? "var(--blue)" : "var(--ink-soft)" }}>
+          {resolvedChoiceIndex !== undefined && resolvedChoiceIndex >= 0
+            ? `✔ Assinado com ${clubFor(choice.proposals[resolvedChoiceIndex].clubTier)}`
+            : "✔ Recusou todas — contrato curto de prova"}
         </div>
       )}
     </div>

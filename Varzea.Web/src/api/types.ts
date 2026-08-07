@@ -103,10 +103,25 @@ export interface PendingTransferOffer {
   contractExpiring: boolean;
 }
 
+// Roadmap §9 Bloco 3, "múltiplas propostas": aparece quando o contrato vence sem
+// renovação, em vez de PendingTransferOffer. ClubTier é absoluto (não relativo ao tier
+// atual, ao contrário de PendingTransferOffer.upgrade).
+export interface ContractProposalOption {
+  clubTier: number;
+  upgrade: boolean;
+}
+
+export interface PendingContractChoice {
+  age: number;
+  overall: number;
+  proposals: ContractProposalOption[];
+}
+
 export interface AdvanceResponse {
   token: string;
   newSeasons: SeasonResult[];
   pendingOffer: PendingTransferOffer | null;
+  pendingContractChoice: PendingContractChoice | null;
   finished: boolean;
 }
 

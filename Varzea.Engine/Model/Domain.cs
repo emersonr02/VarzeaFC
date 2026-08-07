@@ -62,7 +62,14 @@ public sealed record CareerRecipe(
     /// CareerSimulator.RunCareer (seasonIndex). Null/vazio = nenhum pedido feito,
     /// comportamento idêntico ao motor antes deste recurso existir (opt-in, não muda a
     /// amostra do Monte Carlo).</summary>
-    SeasonRequestKind[]? SeasonRequests = null
+    SeasonRequestKind[]? SeasonRequests = null,
+    /// <summary>Índice da proposta aceita quando o contrato vence sem renovação (Roadmap
+    /// §9 Bloco 3, corte de escopo fechado — "1+ propostas"), na ordem em que as decisões
+    /// de PendingContractChoice apareceram. -1 ou fora dos limites = recusou todas, fica
+    /// de contrato curto de "prova". Mesmo padrão de TransferChoices, mas com índice em
+    /// vez de bool porque "1 de N" não cabe num bool[]. Null/vazio = comportamento padrão
+    /// (não muda a amostra do Monte Carlo).</summary>
+    int[]? ContractChoices = null
 );
 
 public sealed class SeasonResult
@@ -176,17 +183,36 @@ public sealed record PendingTransferOffer(
     int Age, int Overall, int ClubTier, bool Upgrade,
     int Goals, int Assists, int Tackles, int CleanSheets, int LeaguePosition,
     /// <summary>Veio de um contrato vencido sem renovação (Roadmap §9 Bloco 3), não de
-    /// uma oferta de fora do ciclo — muda a narrativa no front.</summary>
+    /// uma oferta de fora do ciclo — muda a narrativa no front. Desde o corte de escopo
+    /// "múltiplas propostas" fechado, a não-renovação sempre usa PendingContractChoice
+    /// em vez disto — este campo fica sempre false na prática, mantido por
+    /// compatibilidade com o resto do fluxo de oferta única (fora do ciclo).</summary>
     bool ContractExpiring = false);
+
+/// <summary>Uma proposta concreta entre as N que aparecem quando o contrato vence sem
+/// renovação (Roadmap §9 Bloco 3, corte de escopo fechado — "1+ propostas"). ClubTier é
+/// absoluto (não relativo ao tier atual, ao contrário de PendingTransferOffer.Upgrade).</summary>
+public sealed record ContractProposalOption(int ClubTier, bool Upgrade);
+
+/// <summary>
+/// 1-3 propostas simultâneas quando o contrato vence sem renovação (natural ou via
+/// RequestLeaveAtContractEnd) — o jogador escolhe uma (por índice, CareerRecipe.
+/// ContractChoices) ou recusa todas e fica de contrato curto de "prova". Ofertas de FORA
+/// do ciclo de contrato continuam usando PendingTransferOffer (uma só), sem mudança.
+/// </summary>
+public sealed record PendingContractChoice(int Age, int Overall, IReadOnlyList<ContractProposalOption> Proposals);
 
 /// <summary>
 /// Resultado de rodar a carreira até a próxima decisão pendente, ou até o fim.
-/// Existe porque SimulateCareer exige TransferChoices completo de antemão; AdvanceCareer
-/// permite alimentar essas decisões uma a uma (fluxo interativo de /careers/advance).
+/// Existe porque SimulateCareer exige TransferChoices/ContractChoices completos de
+/// antemão; AdvanceCareer permite alimentar essas decisões uma a uma (fluxo interativo de
+/// /careers/advance). PendingOffer e PendingContractChoice nunca vêm preenchidos ao
+/// mesmo tempo — são dois tipos de pausa mutuamente exclusivos.
 /// </summary>
 public sealed class CareerProgress
 {
     public required CareerResult Result { get; init; }
     public PendingTransferOffer? PendingOffer { get; init; }
-    public bool AwaitingDecision => PendingOffer is not null;
+    public PendingContractChoice? PendingContractChoice { get; init; }
+    public bool AwaitingDecision => PendingOffer is not null || PendingContractChoice is not null;
 }

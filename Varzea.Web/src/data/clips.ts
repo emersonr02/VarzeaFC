@@ -1,11 +1,14 @@
-import type { PendingTransferOffer, SeasonResult, TitleKind } from "../api/types";
+import type { PendingContractChoice, PendingTransferOffer, SeasonResult, TitleKind } from "../api/types";
 
 export type ClipData =
   | { kind: "final"; season: SeasonResult; title: TitleKind }
   | { kind: "season"; season: SeasonResult }
   | { kind: "awards"; season: SeasonResult }
   | { kind: "retire"; season: SeasonResult }
-  | { kind: "offer"; offer: PendingTransferOffer };
+  | { kind: "offer"; offer: PendingTransferOffer }
+  // Roadmap §9 Bloco 3, "múltiplas propostas": contrato venceu sem renovação, o jogador
+  // escolhe uma entre 1-3 propostas (ou recusa todas) — ver PendingContractChoice.
+  | { kind: "contractChoice"; choice: PendingContractChoice };
 
 const CUP_TITLES: TitleKind[] = ["DomesticCup", "ContinentalPrimary", "ContinentalSecondary", "WorldCup"];
 

@@ -146,6 +146,10 @@ public sealed class CareerSimulator
 
         int tier = StartingTier(potential, rng);
         int transferIdx = 0;
+        // Índice separado pra PendingContractChoice (Roadmap §9 Bloco 3, corte de escopo
+        // fechado — "1+ propostas") — mesmo padrão de transferIdx, mas indexando
+        // recipe.ContractChoices (int, não bool, já que "1 de N" não cabe num bool[]).
+        int contractChoiceIdx = 0;
 
         // --- CONTRATO (Roadmap §9 Bloco 3) ---
         // Duração decidida pela FASE da carreira (crescendo/pico/declinando), não pelo
@@ -178,6 +182,7 @@ public sealed class CareerSimulator
         // re-execução (0-based), e requests[seasonIndex] é lido de forma pura — sem
         // estado serializado entre chamadas de AdvanceCareer.
         var requests = recipe.SeasonRequests ?? Array.Empty<SeasonRequestKind>();
+        var contractChoices = recipe.ContractChoices ?? Array.Empty<int>();
         int seasonIndex = 0;
         bool isCaptain = false, hasSetPieces = false, wantsToLeaveAtContractEnd = false;
 
@@ -454,6 +459,10 @@ public sealed class CareerSimulator
             bool moralPressure = moraleAtStart < -0.4;
             bool contractExpiring = contractYear >= contractDuration;
             bool offer = false, upgrade = false, contractRenewed = false;
+            // Não-renovação (Roadmap §9 Bloco 3, corte de escopo fechado — "1+
+            // propostas"): em vez de uma oferta só, o jogador escolhe entre estas.
+            // PendingTransferOffer (offer/upgrade acima) continua só pra fora do ciclo.
+            List<ContractProposalOption>? contractProposals = null;
 
             if (contractExpiring)
             {
@@ -461,10 +470,8 @@ public sealed class CareerSimulator
                 {
                     // Jogador já avisou (painel Contrato, roadmap pós-§9) que quer sair
                     // quando o contrato vencesse — pula a rolagem de renovação e vai
-                    // direto pro caminho de "não renovou", reaproveitando 100% da lógica
-                    // de proposta que já existe.
-                    offer = true;
-                    upgrade = overall >= target;
+                    // direto pro caminho de "não renovou".
+                    contractProposals = GenerateContractProposals(tier, overall, target, rng);
                     wantsToLeaveAtContractEnd = false;
                 }
                 else
@@ -480,12 +487,7 @@ public sealed class CareerSimulator
                     }
                     else
                     {
-                        // Não renovou: o motor gera a proposta que aparece (Roadmap §9 Bloco 3
-                        // pede "1+ propostas" — esta sessão entrega exatamente 1, calculada a
-                        // partir do nível atual vs. o padrão do tier; múltiplas propostas
-                        // simultâneas ficam pro próximo passo, ver HANDOFF §9).
-                        offer = true;
-                        upgrade = overall >= target;
+                        contractProposals = GenerateContractProposals(tier, overall, target, rng);
                     }
                 }
             }
@@ -509,7 +511,32 @@ public sealed class CareerSimulator
             }
 
             bool accepted = false;
-            if (offer)
+            if (contractProposals is not null)
+            {
+                if (interactive && contractChoiceIdx >= contractChoices.Length)
+                {
+                    // Sem decisão ainda — pausa aqui, mesma regra de "temporada não entra
+                    // no Timeline até fechar" do PendingOffer.
+                    return new CareerProgress
+                    {
+                        Result = Finalize(result, peak, seasons, goals, assists, tackles, cs, caps),
+                        PendingContractChoice = new PendingContractChoice(age, overall, contractProposals)
+                    };
+                }
+                int choice = contractChoiceIdx < contractChoices.Length ? contractChoices[contractChoiceIdx] : -1;
+                contractChoiceIdx++;
+                offer = true; // pro SeasonResult.HadTransferOffer, igual ao fluxo de fora do ciclo
+                if (choice >= 0 && choice < contractProposals.Count)
+                {
+                    accepted = true;
+                    upgrade = contractProposals[choice].Upgrade;
+                    tier = Math.Clamp(contractProposals[choice].ClubTier, 1, 5);
+                }
+                // choice inválido/-1: accepted fica false, tier não muda aqui — o bloco de
+                // reinício de contrato mais abaixo já trata "recusou todas" como o
+                // contrato curto de "prova" (mesmo comportamento de antes).
+            }
+            else if (offer)
             {
                 if (interactive && transferIdx >= recipe.TransferChoices.Length)
                 {
@@ -527,9 +554,9 @@ public sealed class CareerSimulator
                 accepted = transferIdx < recipe.TransferChoices.Length && recipe.TransferChoices[transferIdx];
                 transferIdx++;
                 // Clamp: os gatilhos de fora do ciclo já guardam tier<5/tier>1 na condição,
-                // mas a proposta de não-renovação (upgrade = overall >= target) não tem
-                // esse guard — sem o clamp, tier podia sair de [1,5] e quebrar o lookup de
-                // Tiers na próxima temporada.
+                // mas por segurança (upgrade=overall>=target não tem esse guard em todo
+                // caminho que o alimenta) — sem o clamp, tier podia sair de [1,5] e quebrar
+                // o lookup de Tiers na próxima temporada.
                 tier = Math.Clamp(tier + (accepted ? (upgrade ? 1 : -1) : 0), 1, 5);
             }
 
@@ -680,6 +707,40 @@ public sealed class CareerSimulator
             : age <= peakAge + 3 ? rng.NextInt(3, 4)
             : rng.NextInt(1, 2);
         return Math.Max(1, Math.Min(baseDuration, retireAge - age));
+    }
+
+    /// <summary>
+    /// 1-3 propostas quando o contrato vence sem renovação (Roadmap §9 Bloco 3, corte de
+    /// escopo fechado — "1+ propostas de acordo com overall, potencial, atuações
+    /// recentes e idade"). Nunca pula mais de um tier de cada vez em relação ao atual,
+    /// pra ficar compatível com o resto do motor (tier 1-5 como única dimensão de
+    /// qualidade de clube — não há clubes nomeados no nível do motor).
+    /// </summary>
+    private static List<ContractProposalOption> GenerateContractProposals(int tier, int overall, int target, Pcg32 rng)
+    {
+        var proposals = new List<ContractProposalOption>();
+
+        // Proposta principal: mesma lógica de antes (overall vs. padrão do tier atual).
+        bool qualifiesUpgrade = overall >= target;
+        int primaryTier = Math.Clamp(tier + (qualifiesUpgrade ? 1 : -1), 1, 5);
+        proposals.Add(new ContractProposalOption(primaryTier, qualifiesUpgrade));
+
+        // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) —
+        // chance cresce com o overall, representando mais clubes de olho num jogador bom.
+        double lateralChance = Math.Clamp((overall - 65) / 45.0, 0.15, 0.85);
+        if (rng.Chance(lateralChance) && primaryTier != tier)
+            proposals.Add(new ContractProposalOption(tier, false));
+
+        // Terceira proposta: "esticada" — só pra quem está muito bem, um clube ainda
+        // maior que o da proposta principal.
+        if (overall >= 85 && tier < 5)
+        {
+            int stretchTier = Math.Clamp(tier + 1, 1, 5);
+            if (!proposals.Any(p => p.ClubTier == stretchTier))
+                proposals.Add(new ContractProposalOption(stretchTier, true));
+        }
+
+        return proposals;
     }
 
     private static InjurySeverity RollInjury(Pcg32 rng, int age)
