@@ -185,9 +185,19 @@ public sealed class CareerSimulator
         var contractChoices = recipe.ContractChoices ?? Array.Empty<int>();
         int seasonIndex = 0;
         bool isCaptain = false, hasSetPieces = false, wantsToLeaveAtContractEnd = false;
+        // Empréstimo (painel Empresário, RequestLoan): -1 = não está emprestado. Quando
+        // >= 0, guarda o tier do clube DONO do contrato pra restaurar no início da
+        // temporada seguinte — o empréstimo dura sempre exatamente uma temporada.
+        int parentTier = -1;
 
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
+            if (parentTier >= 0)
+            {
+                tier = parentTier;
+                parentTier = -1;
+            }
+
             // curva de evolução: cresce em direção ao potencial, estabiliza, decai
             if (age < peakAge)
                 overall += Math.Max(1, (int)Math.Round((potential - overall) * curve.GrowthRate))
@@ -288,6 +298,21 @@ public sealed class CareerSimulator
                     requestGranted = true;
                     teamMorale = Math.Clamp(teamMorale - 0.08, -1.0, 1.0);
                     coachMorale = Math.Clamp(coachMorale - 0.10, -1.0, 1.0);
+                    break;
+                case SeasonRequestKind.RequestLoan:
+                    // Painel Empresário: declaração de intenção, "aceita" por construção
+                    // (mesmo padrão de RequestLeaveAtContractEnd) — só não pode empilhar
+                    // com um empréstimo já em curso. Um tier abaixo por UMA temporada
+                    // (restaurado no topo da iteração seguinte, ver parentTier acima);
+                    // o tier mais fácil já entra no cálculo de perf desta mesma temporada
+                    // (target um degrau abaixo), o que cobre o "mais minutos" do pedido
+                    // sem precisar de um sistema de apps separado.
+                    if (parentTier < 0 && tier > 1)
+                    {
+                        requestGranted = true;
+                        parentTier = tier;
+                        tier = Math.Max(1, tier - 1);
+                    }
                     break;
             }
             seasonIndex++;
@@ -661,7 +686,7 @@ public sealed class CareerSimulator
                 DilemmaTarget = dilemmaTarget, DilemmaPositive = dilemmaPositive, DilemmaVariant = dilemmaVariant,
                 ContractExpiring = contractExpiring, ContractRenewed = contractRenewed,
                 ContractYearsRemaining = Math.Max(0, contractDuration - contractYear),
-                IsCaptain = isCaptain, HasSetPieces = hasSetPieces,
+                IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
                 RequestMade = request, RequestGranted = requestGranted
             };
             finished.Titles.AddRange(season.Titles);

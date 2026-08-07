@@ -367,6 +367,7 @@ function requestNote(season: SeasonResult): string | null {
     case "RequestRaise": return season.requestGranted ? "💰 Pediu aumento — aceito!" : "💰 Pediu aumento — negado.";
     case "RequestCaptaincy": return season.requestGranted ? "🎖️ Pediu a braçadeira — agora é o capitão!" : "🎖️ Pediu a braçadeira — não rolou desta vez.";
     case "RequestSetPieces": return season.requestGranted ? "🎯 Pediu bolas paradas — concedido!" : "🎯 Pediu bolas paradas — negado.";
+    case "RequestLoan": return season.requestGranted ? "🔄 Pediu empréstimo — foi pra outro clube por esta temporada." : "🔄 Pediu empréstimo — o clube preferiu manter você.";
     default: return null;
   }
 }
@@ -528,6 +529,15 @@ function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <RequestButton kind="RequestCaptaincy" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.isCaptain} onSelect={onSelect} />
           <RequestButton kind="RequestSetPieces" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasSetPieces} onSelect={onSelect} />
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div className="dash-k">Empresário</div>
+          <div className="dash-v" style={{ fontSize: 14 }}>{lastSeason.onLoan ? "🔄 Emprestado" : "Sem empréstimo"}</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <RequestButton kind="RequestLoan" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
         </div>
       </div>
       {pendingRequest && (

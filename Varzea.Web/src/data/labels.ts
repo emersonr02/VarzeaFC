@@ -61,6 +61,7 @@ export const SEASON_REQUEST_BUTTON_LABEL: Record<Exclude<SeasonRequestKind, "Non
   RequestCaptaincy: "Pedir a braçadeira",
   RequestSetPieces: "Pedir bolas paradas",
   RequestLeaveNow: "Pedir pra sair JÁ",
+  RequestLoan: "Pedir empréstimo",
 };
 
 export const INJURY_LABEL: Record<InjurySeverity, string | null> = {

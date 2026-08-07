@@ -38,7 +38,8 @@ public enum SeasonRequestKind
     RequestRaise,                // pede aumento — sem sistema de dinheiro, afeta só moral
     RequestCaptaincy,            // pede a braçadeira — concessão fica pra sempre
     RequestSetPieces,            // pede bolas paradas — concessão fica pra sempre, sobe gols/assist.
-    RequestLeaveNow              // pede pra sair JÁ (corte de escopo do Bloco 2 fechado) — busca oferta garantida, custa moral
+    RequestLeaveNow,             // pede pra sair JÁ (corte de escopo do Bloco 2 fechado) — busca oferta garantida, custa moral
+    RequestLoan                  // pede empréstimo (painel Empresário) — um tier abaixo por UMA temporada, depois volta
 }
 
 /// <summary>Qual valor de moral um "dilema fictício" mexeu nesta temporada (Roadmap §9
@@ -140,6 +141,11 @@ public sealed class SeasonResult
     // --- Pedidos do jogador (painel Contrato + Técnico) ---
     public bool IsCaptain { get; init; }
     public bool HasSetPieces { get; init; }
+
+    /// <summary>Temporada jogada emprestado (painel Empresário, RequestLoan) — um tier
+    /// abaixo do clube dono do contrato, sempre por UMA temporada só. ClubTier já
+    /// reflete o clube emprestado; este campo é só pro front narrar a diferença.</summary>
+    public bool OnLoan { get; init; }
 
     /// <summary>O pedido feito ANTES desta temporada (via SeasonRequests), e se foi
     /// concedido. None = nenhum pedido feito nesta temporada.</summary>

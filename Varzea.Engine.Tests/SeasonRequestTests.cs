@@ -267,6 +267,35 @@ public class SeasonRequestTests
         Assert.True(accepted.Timeline[first].ContractYearsRemaining > 2);
     }
 
+    // Só pede empréstimo na PRIMEIRA temporada (índice 0) — diferente de
+    // AlwaysSetPieces/AlwaysCaptaincy (concessão permanente), o empréstimo dura só uma
+    // temporada e a restauração acontece no TOPO da iteração seguinte, antes de
+    // qualquer pedido novo ser avaliado (ver parentTier em CareerSimulator) — então
+    // repetir o pedido toda temporada resultaria em "emprestado" de novo a cada ano
+    // (mecânica correta, mas não testaria a restauração isoladamente). Pedir só uma vez
+    // isola exatamente o comportamento "um tier abaixo por UMA temporada, depois volta".
+    private static readonly SeasonRequestKind[] LoanOnlyFirstSeason =
+        new[] { SeasonRequestKind.RequestLoan }
+            .Concat(Enumerable.Repeat(SeasonRequestKind.None, 24)).ToArray();
+
+    [Fact]
+    public void RequestLoan_DropsTierForOneSeasonThenRestores()
+    {
+        var sim = new CareerSimulator(Rules);
+        var recipe = BaseRecipe(7) with { SeasonRequests = LoanOnlyFirstSeason, TransferChoices = Array.Empty<bool>() };
+
+        var result = sim.SimulateCareer(recipe);
+
+        var firstSeason = result.Timeline[0];
+        Assert.True(firstSeason.RequestGranted, "tier inicial nesta seed deveria ser > 1, então o empréstimo deveria ser concedido");
+        Assert.Equal(SeasonRequestKind.RequestLoan, firstSeason.RequestMade);
+        Assert.True(firstSeason.OnLoan);
+
+        var secondSeason = result.Timeline[1];
+        Assert.False(secondSeason.OnLoan, "empréstimo dura só uma temporada — a seguinte não pode continuar marcada");
+        Assert.True(secondSeason.ClubTier > firstSeason.ClubTier, "tier deveria voltar a subir pro clube dono do contrato");
+    }
+
     [Fact]
     public void Captaincy_OnceGranted_StaysGrantedForRestOfCareer()
     {
