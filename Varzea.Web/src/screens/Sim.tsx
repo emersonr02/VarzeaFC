@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Pos, SeasonResult, TitleKind } from "../api/types";
+import type { Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
 import {
   DOMESTIC_CUP_NAME,
@@ -10,7 +10,7 @@ import {
   continentalName,
   randomOpponentCountry,
 } from "../data/flavor";
-import { INJURY_LABEL, POS_LABEL, TITLE_LABEL } from "../data/labels";
+import { INJURY_LABEL, POS_LABEL, SEASON_REQUEST_BUTTON_LABEL, TITLE_LABEL } from "../data/labels";
 
 interface DisplayedClip {
   data: ClipData;
@@ -37,6 +37,11 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dash, setDash] = useState<{ age: number; overall: number; clubTier: number } | null>(null);
+  // Painel Contrato + Técnico (roadmap pós-§9): última temporada fechada (pra mostrar
+  // contrato/braçadeira/bolas paradas fora do ticker) e o pedido selecionado pra
+  // próxima temporada, ainda não enviado.
+  const [lastSeason, setLastSeason] = useState<SeasonResult | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<Exclude<SeasonRequestKind, "None"> | null>(null);
   const clubNames = useRef<Record<number, string>>({});
 
   function clubFor(tier: number): string {
@@ -54,8 +59,8 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   // em sequência sem esperar um re-render entre uma chamada e outra; se lesse `token` do
   // estado, todas as chamadas do laço usariam o MESMO token antigo (setState não é
   // síncrono) e cada avanço pisaria no anterior em vez de continuar dele.
-  async function fetchMore(currentToken: string, decision?: boolean) {
-    const resp = await api.advance(currentToken, decision);
+  async function fetchMore(currentToken: string, decision?: boolean, request?: SeasonRequestKind) {
+    const resp = await api.advance(currentToken, decision, request);
     const seasonClips = buildClipsForSeasons(resp.newSeasons);
     const offerClip: ClipData[] = resp.pendingOffer ? [{ kind: "offer", offer: resp.pendingOffer }] : [];
     return { clips: [...seasonClips, ...offerClip], finished: resp.finished, token: resp.token };
@@ -66,12 +71,20 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     const [head, ...rest] = nextQueue;
     setQueue(rest);
     setDash(dashFrom(head));
+    if (head.kind !== "offer") setLastSeason(head.season);
     setDisplayed((prev) => {
       const arr = [...prev, { data: head }];
       if (head.kind === "offer") setAwaitingIndex(arr.length - 1);
       return arr;
     });
   }
+
+  // Painel Contrato + Técnico: só dá pra anexar um pedido novo quando esta chamada vai
+  // de fato bater na API pedindo temporadas novas — ou seja, quando não há nada em fila
+  // já buscado (senão o pedido cairia numa temporada que o motor já revelou noutra
+  // chamada, fora de ordem). Casa com a mesma janela em que "Avançar" vira rede de
+  // verdade em vez de só paginar localmente.
+  const canRequest = queue.length === 0 && !finished && awaitingIndex === null && !loading;
 
   async function handleAdvance() {
     if (awaitingIndex !== null || loading) return;
@@ -83,10 +96,11 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     if (finished) return;
     setLoading(true);
     try {
-      const more = await fetchMore(token);
+      const more = await fetchMore(token, undefined, pendingRequest ?? undefined);
       setToken(more.token);
       setFinished(more.finished);
       popAndDisplay(more.clips);
+      setPendingRequest(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao avançar a carreira.");
     } finally {
@@ -116,6 +130,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   async function handleSkipAll() {
     setLoading(true);
     setError(null);
+    setPendingRequest(null); // Pular tudo não faz pedidos do painel Contrato + Técnico
     try {
       let pendingQueue = [...queue];
       let currentToken = token;
@@ -135,6 +150,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           const clip = pendingQueue.shift()!;
           setDisplayed((prev) => [...prev, { data: clip }]);
           setDash(dashFrom(clip));
+          if (clip.kind !== "offer") setLastSeason(clip.season);
         } else {
           const more = await fetchMore(currentToken);
           currentToken = more.token;
@@ -171,6 +187,15 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           <div className="dash-item"><div className="dash-k">Potencial</div><div className="dash-v">{potential}</div></div>
           <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash ? clubFor(dash.clubTier) : "—"}</div></div>
         </div>
+
+        {lastSeason && (
+          <ManagementPanel
+            lastSeason={lastSeason}
+            pendingRequest={pendingRequest}
+            canRequest={canRequest}
+            onSelect={(k) => setPendingRequest((cur) => (cur === k ? null : k))}
+          />
+        )}
 
         <div className="ticker-wrap">
           {displayed.map((d, i) => (
@@ -258,12 +283,27 @@ function moraleNote(season: SeasonResult): string | null {
   return null;
 }
 
+// Painel Contrato + Técnico (roadmap pós-§9): narra o resultado do pedido feito antes
+// desta temporada, se houve algum.
+function requestNote(season: SeasonResult): string | null {
+  switch (season.requestMade) {
+    case "None": return null;
+    case "RequestLeaveAtContractEnd": return "📣 Avisou o clube: vai embora quando o contrato acabar.";
+    case "RequestRenewal": return season.requestGranted ? "📝 Pediu renovação antecipada — aceita!" : "📝 Pediu renovação antecipada — recusada.";
+    case "RequestRaise": return season.requestGranted ? "💰 Pediu aumento — aceito!" : "💰 Pediu aumento — negado.";
+    case "RequestCaptaincy": return season.requestGranted ? "🎖️ Pediu a braçadeira — agora é o capitão!" : "🎖️ Pediu a braçadeira — não rolou desta vez.";
+    case "RequestSetPieces": return season.requestGranted ? "🎯 Pediu bolas paradas — concedido!" : "🎯 Pediu bolas paradas — negado.";
+    default: return null;
+  }
+}
+
 function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFor: (t: number) => string; country: string }) {
   const champion = season.leaguePosition === 1;
   const club = clubFor(season.clubTier);
   const leagueName = LEAGUE_NAME[country] ?? "Liga Nacional";
   const injuryNote = INJURY_LABEL[season.injury];
   const note = moraleNote(season);
+  const reqNote = requestNote(season);
   return (
     <div className="clip">
       <div className="season-tag">Resumo · {season.age} anos · Overall {season.overall} · {club}</div>
@@ -286,6 +326,7 @@ function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFo
           📝 Contrato renovado com {club} — o clube quer contar com você por mais alguns anos.
         </div>
       )}
+      {reqNote && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{reqNote}</div>}
     </div>
   );
 }
@@ -340,5 +381,73 @@ function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDec
         </div>
       )}
     </div>
+  );
+}
+
+// Painel Contrato + Técnico (roadmap pós-§9). Mostra o estado atual (temporadas
+// restantes de contrato, relação com o técnico) e deixa o jogador selecionar UM pedido
+// pra próxima temporada — enviado junto do próximo clique real em "Avançar" (ver
+// canRequest/handleAdvance). Braçadeira e bolas paradas somem depois de concedidas
+// (ficam pra sempre, não tem por que pedir de novo).
+function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
+  lastSeason: SeasonResult;
+  pendingRequest: Exclude<SeasonRequestKind, "None"> | null;
+  canRequest: boolean;
+  onSelect: (kind: Exclude<SeasonRequestKind, "None">) => void;
+}) {
+  return (
+    <div className="dash-bar" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: -6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div className="dash-k">Contrato</div>
+          <div className="dash-v" style={{ fontSize: 14 }}>
+            {lastSeason.contractYearsRemaining} temporada{lastSeason.contractYearsRemaining === 1 ? "" : "s"} restante{lastSeason.contractYearsRemaining === 1 ? "" : "s"}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <RequestButton kind="RequestRenewal" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          <RequestButton kind="RequestLeaveAtContractEnd" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          <RequestButton kind="RequestRaise" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div className="dash-k">Técnico</div>
+          <div className="dash-v" style={{ fontSize: 14 }}>{moraleIcon(lastSeason.coachMorale)} Relação</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <RequestButton kind="RequestCaptaincy" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.isCaptain} onSelect={onSelect} />
+          <RequestButton kind="RequestSetPieces" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasSetPieces} onSelect={onSelect} />
+        </div>
+      </div>
+      {pendingRequest && (
+        <div className="body" style={{ fontSize: 12, fontStyle: "italic" }}>
+          Pedido selecionado pra próxima temporada: {SEASON_REQUEST_BUTTON_LABEL[pendingRequest]} — clique em "Avançar" pra enviar.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RequestButton({ kind, pendingRequest, disabled, granted, onSelect }: {
+  kind: Exclude<SeasonRequestKind, "None">;
+  pendingRequest: Exclude<SeasonRequestKind, "None"> | null;
+  disabled: boolean;
+  granted?: boolean;
+  onSelect: (kind: Exclude<SeasonRequestKind, "None">) => void;
+}) {
+  if (granted) {
+    return <span className="btn-mini" style={{ opacity: 0.6, cursor: "default" }}>✓ {SEASON_REQUEST_BUTTON_LABEL[kind]}</span>;
+  }
+  const selected = pendingRequest === kind;
+  return (
+    <button
+      type="button"
+      className={`btn-mini ${selected ? "accept" : "decline"}`}
+      disabled={disabled}
+      onClick={() => onSelect(kind)}
+    >
+      {selected ? "✓ " : ""}{SEASON_REQUEST_BUTTON_LABEL[kind]}
+    </button>
   );
 }

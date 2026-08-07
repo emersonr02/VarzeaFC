@@ -173,6 +173,14 @@ public sealed class CareerSimulator
         double teamMorale = 0, coachMorale = 0, crowdMorale = 0;
         int lowMoraleStreak = 0;
 
+        // --- PEDIDOS DO JOGADOR (painel Contrato + Técnico) ---
+        // Mesma garantia de determinismo: seasonIndex conta temporadas simuladas nesta
+        // re-execução (0-based), e requests[seasonIndex] é lido de forma pura — sem
+        // estado serializado entre chamadas de AdvanceCareer.
+        var requests = recipe.SeasonRequests ?? Array.Empty<SeasonRequestKind>();
+        int seasonIndex = 0;
+        bool isCaptain = false, hasSetPieces = false, wantsToLeaveAtContractEnd = false;
+
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
             // curva de evolução: cresce em direção ao potencial, estabiliza, decai
@@ -196,6 +204,73 @@ public sealed class CareerSimulator
             double moraleAtStart = (teamMorale + coachMorale + crowdMorale) / 3.0;
             perf += moraleAtStart * MoralPerfWeight;
 
+            // --- PEDIDOS DO JOGADOR (painel Contrato + Técnico, roadmap pós-§9) ---
+            // Resolvido AQUI (antes de apps/Output) pra que bolas paradas já valha nesta
+            // mesma temporada, não só a partir da próxima. Um pedido por temporada.
+            var request = seasonIndex < requests.Length ? requests[seasonIndex] : SeasonRequestKind.None;
+            bool requestGranted = false;
+            switch (request)
+            {
+                case SeasonRequestKind.RequestRenewal:
+                {
+                    // Mesma fórmula do gatilho de expiração mais abaixo. Como isto roda
+                    // ANTES do bloco "--- CONTRATO / TRANSFERÊNCIA ---", se a renovação
+                    // for concedida agora, contractExpiring (calculado lá a partir do
+                    // contractYear já zerado) sai false sozinho — sem precisar de guard.
+                    double renewChanceNow = Math.Clamp(0.55 + perf / 120.0 + moraleAtStart * 0.20
+                        - (age >= retireAge - 1 ? 0.30 : 0), 0.05, 0.90);
+                    if (rng.Chance(renewChanceNow))
+                    {
+                        requestGranted = true;
+                        contractYear = 0;
+                        contractDuration = NextContractDuration(age, peakAge, retireAge, rng);
+                    }
+                    break;
+                }
+                case SeasonRequestKind.RequestLeaveAtContractEnd:
+                    // É uma declaração de intenção, não uma decisão do clube — "aceita"
+                    // por construção. Consumida no bloco de contrato quando o prazo vencer.
+                    wantsToLeaveAtContractEnd = true;
+                    requestGranted = true;
+                    break;
+                case SeasonRequestKind.RequestRaise:
+                {
+                    // Sem sistema de dinheiro (fora de escopo — painel Empresário não
+                    // construído): concedido/negado só mexe em moral, não em número
+                    // nenhum de salário real.
+                    double raiseChance = Math.Clamp((overall - target) / 40.0 + moraleAtStart * 0.25 + 0.15, 0.05, 0.80);
+                    requestGranted = rng.Chance(raiseChance);
+                    if (requestGranted)
+                    {
+                        coachMorale = Math.Clamp(coachMorale + 0.10, -1.0, 1.0);
+                        teamMorale = Math.Clamp(teamMorale + 0.05, -1.0, 1.0);
+                    }
+                    else
+                    {
+                        coachMorale = Math.Clamp(coachMorale - 0.08, -1.0, 1.0);
+                    }
+                    break;
+                }
+                case SeasonRequestKind.RequestCaptaincy:
+                    if (!isCaptain)
+                    {
+                        double capChance = Math.Clamp((overall - 70) / 60.0 + moraleAtStart * 0.20
+                            + (age >= 24 ? 0.15 : 0), 0.05, 0.85);
+                        requestGranted = rng.Chance(capChance);
+                        if (requestGranted) isCaptain = true;
+                    }
+                    break;
+                case SeasonRequestKind.RequestSetPieces:
+                    if (!hasSetPieces)
+                    {
+                        double spChance = Math.Clamp((overall - 72) / 55.0 + moraleAtStart * 0.15 + 0.10, 0.05, 0.75);
+                        requestGranted = rng.Chance(spChance);
+                        if (requestGranted) hasSetPieces = true;
+                    }
+                    break;
+            }
+            seasonIndex++;
+
             var injury = RollInjury(rng, age);
             if (injury == InjurySeverity.CareerEnding)
             {
@@ -209,8 +284,10 @@ public sealed class CareerSimulator
 
             int apps = Math.Clamp(rng.NextInt(24, 36) - InjuryCost(injury, rng), 4, 38);
 
-            int sg = Output(rng, overall, factors.Attack, 30, perf, apps, role.GoalsMod);
-            int sa = Output(rng, overall, factors.Passing, 22, perf, apps, role.AssistsMod);
+            // Bolas paradas (painel Técnico, roadmap pós-§9): bônus fica pra sempre uma
+            // vez concedido, soma direto no roleMod que Output() já usa.
+            int sg = Output(rng, overall, factors.Attack, 30, perf, apps, role.GoalsMod + (hasSetPieces ? 0.12 : 0));
+            int sa = Output(rng, overall, factors.Passing, 22, perf, apps, role.AssistsMod + (hasSetPieces ? 0.10 : 0));
             int st = Output(rng, overall, factors.Defending, 95, perf, apps, role.DefenseMod);
             int scs = (int)Math.Round(apps * Math.Clamp(0.10 + factors.Defending * (0.22 + perf / 160.0), 0, 0.60));
 
@@ -364,23 +441,36 @@ public sealed class CareerSimulator
 
             if (contractExpiring)
             {
-                // Decisão de renovação: sempre acontece quando o contrato vence — não é
-                // probabilística como as ofertas de fora do ciclo. Moral (Bloco 2) e forma
-                // recente pesam a favor; idade perto da aposentadoria pesa contra.
-                double renewChance = Math.Clamp(0.55 + perf / 120.0 + moraleAtStart * 0.20
-                    - (age >= retireAge - 1 ? 0.30 : 0), 0.05, 0.90);
-                if (rng.Chance(renewChance))
+                if (wantsToLeaveAtContractEnd)
                 {
-                    contractRenewed = true;
+                    // Jogador já avisou (painel Contrato, roadmap pós-§9) que quer sair
+                    // quando o contrato vencesse — pula a rolagem de renovação e vai
+                    // direto pro caminho de "não renovou", reaproveitando 100% da lógica
+                    // de proposta que já existe.
+                    offer = true;
+                    upgrade = overall >= target;
+                    wantsToLeaveAtContractEnd = false;
                 }
                 else
                 {
-                    // Não renovou: o motor gera a proposta que aparece (Roadmap §9 Bloco 3
-                    // pede "1+ propostas" — esta sessão entrega exatamente 1, calculada a
-                    // partir do nível atual vs. o padrão do tier; múltiplas propostas
-                    // simultâneas ficam pro próximo passo, ver HANDOFF §9).
-                    offer = true;
-                    upgrade = overall >= target;
+                    // Decisão de renovação: sempre acontece quando o contrato vence — não é
+                    // probabilística como as ofertas de fora do ciclo. Moral (Bloco 2) e forma
+                    // recente pesam a favor; idade perto da aposentadoria pesa contra.
+                    double renewChance = Math.Clamp(0.55 + perf / 120.0 + moraleAtStart * 0.20
+                        - (age >= retireAge - 1 ? 0.30 : 0), 0.05, 0.90);
+                    if (rng.Chance(renewChance))
+                    {
+                        contractRenewed = true;
+                    }
+                    else
+                    {
+                        // Não renovou: o motor gera a proposta que aparece (Roadmap §9 Bloco 3
+                        // pede "1+ propostas" — esta sessão entrega exatamente 1, calculada a
+                        // partir do nível atual vs. o padrão do tier; múltiplas propostas
+                        // simultâneas ficam pro próximo passo, ver HANDOFF §9).
+                        offer = true;
+                        upgrade = overall >= target;
+                    }
                 }
             }
             else
@@ -456,6 +546,10 @@ public sealed class CareerSimulator
 
             if (injury is InjurySeverity.Moderate or InjurySeverity.Severe) { coachMorale -= 0.05; crowdMorale -= 0.03; }
 
+            // Braçadeira (painel Técnico, roadmap pós-§9): pequeno ganho de moral toda
+            // temporada como capitão — orgulho/liderança, sem revogação.
+            if (isCaptain) { teamMorale = Math.Clamp(teamMorale + 0.03, -1.0, 1.0); }
+
             // "Dilemas fictícios" — versão inicial (Roadmap §9 Bloco 2): só o sinal
             // numérico existe ainda. Conteúdo narrativo variado fica como próximo passo
             // (ver nota em Domain.cs.SeasonResult.MoraleDilemma); o front hoje mostra uma
@@ -511,7 +605,10 @@ public sealed class CareerSimulator
                 HadTransferOffer = offer, AcceptedTransfer = accepted,
                 TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                 DeclinedBiggerClub = declinedBiggerClub, MoraleDilemma = moraleDilemma, AskedToLeave = askedToLeave,
-                ContractExpiring = contractExpiring, ContractRenewed = contractRenewed
+                ContractExpiring = contractExpiring, ContractRenewed = contractRenewed,
+                ContractYearsRemaining = Math.Max(0, contractDuration - contractYear),
+                IsCaptain = isCaptain, HasSetPieces = hasSetPieces,
+                RequestMade = request, RequestGranted = requestGranted
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);

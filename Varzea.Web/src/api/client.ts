@@ -7,6 +7,7 @@ import type {
   Pos,
   PositionLockedResponse,
   SaveResponse,
+  SeasonRequestKind,
 } from "./types";
 import { ApiError } from "./types";
 
@@ -34,8 +35,10 @@ export const api = {
   position: (token: string, position: Pos, country: string) =>
     send<PositionLockedResponse>("/careers/position", { token, position, country }),
 
-  advance: (token: string, decision?: boolean) =>
-    send<AdvanceResponse>("/careers/advance", { token, decision: decision ?? null }),
+  // request só faz sentido quando decision é undefined (avançando pra temporada nova,
+  // não resolvendo uma oferta pendente) — ver Varzea.Api.Program /careers/advance.
+  advance: (token: string, decision?: boolean, request?: SeasonRequestKind) =>
+    send<AdvanceResponse>("/careers/advance", { token, decision: decision ?? null, request: request ?? null }),
 
   save: (token: string) => send<SaveResponse>("/careers/save", { token }),
 };

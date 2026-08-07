@@ -25,6 +25,22 @@ public sealed record Legend(string Name, int[] Ratings)
 }
 
 /// <summary>
+/// Pedido do jogador ao clube/comissão técnica, feito no dashboard ANTES de avançar
+/// pra próxima temporada — no máximo um por temporada (painel Contrato + Técnico,
+/// roadmap pós-§9). Diferente de tudo que existia antes (transferência/renovação são
+/// sempre o SERVIDOR que pausa e pergunta): aqui é o jogador que inicia.
+/// </summary>
+public enum SeasonRequestKind
+{
+    None,
+    RequestRenewal,             // pede renovação antecipada, mesmo sem o contrato vencer
+    RequestLeaveAtContractEnd,  // avisa que quer sair quando o contrato atual vencer
+    RequestRaise,                // pede aumento — sem sistema de dinheiro, afeta só moral
+    RequestCaptaincy,            // pede a braçadeira — concessão fica pra sempre
+    RequestSetPieces             // pede bolas paradas — concessão fica pra sempre, sobe gols/assist.
+}
+
+/// <summary>
 /// A "receita" da carreira. É ISTO que vai pro banco quando o usuário salva —
 /// nunca o placar. O servidor re-simula a partir daqui e calcula o score sozinho,
 /// o que dá anti-cheat e replay eterno em ~200 bytes.
@@ -35,7 +51,12 @@ public sealed record CareerRecipe(
     int[] DraftPicks,       // 8 índices (0..2), um por rodada
     Pos Position,
     bool[] TransferChoices, // aceita/recusa, na ordem em que as ofertas apareceram
-    string RulesetVersion
+    string RulesetVersion,
+    /// <summary>Um pedido por temporada, indexado por ordem de chegada — ver
+    /// CareerSimulator.RunCareer (seasonIndex). Null/vazio = nenhum pedido feito,
+    /// comportamento idêntico ao motor antes deste recurso existir (opt-in, não muda a
+    /// amostra do Monte Carlo).</summary>
+    SeasonRequestKind[]? SeasonRequests = null
 );
 
 public sealed class SeasonResult
@@ -93,6 +114,20 @@ public sealed class SeasonResult
     /// <summary>Quando ContractExpiring, indica se o clube renovou automaticamente
     /// (sem decisão do jogador) ou se veio uma proposta de fora (ver HadTransferOffer).</summary>
     public bool ContractRenewed { get; init; }
+
+    /// <summary>Temporadas restantes no contrato atual, contadas a partir do fim desta
+    /// temporada — pro dashboard mostrar "3 temporadas restantes" sem esperar a
+    /// expiração. Painel Contrato + Técnico, roadmap pós-§9.</summary>
+    public int ContractYearsRemaining { get; init; }
+
+    // --- Pedidos do jogador (painel Contrato + Técnico) ---
+    public bool IsCaptain { get; init; }
+    public bool HasSetPieces { get; init; }
+
+    /// <summary>O pedido feito ANTES desta temporada (via SeasonRequests), e se foi
+    /// concedido. None = nenhum pedido feito nesta temporada.</summary>
+    public SeasonRequestKind RequestMade { get; init; }
+    public bool RequestGranted { get; init; }
 }
 
 public enum InjurySeverity { None, Minor, Moderate, Severe, CareerEnding }

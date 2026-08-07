@@ -23,7 +23,11 @@ public sealed record PositionRequest(string Token, Pos Position, string Country)
 
 public sealed record PositionLockedResponse(string Token, int Potential, string Role);
 
-public sealed record AdvanceRequest(string Token, bool? Decision);
+/// <summary>Request só é anexado a SeasonRequests quando Decision é null — ver
+/// /careers/advance. Enviar Decision (resolvendo uma oferta pendente) e Request no
+/// mesmo POST não faz sentido: o pedido é feito ANTES de avançar pra próxima temporada,
+/// nunca junto da resposta a uma oferta que já surgiu na temporada corrente.</summary>
+public sealed record AdvanceRequest(string Token, bool? Decision, SeasonRequestKind? Request = null);
 
 public sealed record AdvanceResponse(
     string Token, IReadOnlyList<SeasonResult> NewSeasons, PendingTransferOffer? PendingOffer, bool Finished);

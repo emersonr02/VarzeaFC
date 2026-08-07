@@ -111,11 +111,34 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
         ? state.TransferChoices.Append(decision).ToArray()
         : state.TransferChoices;
 
-    var recipe = new CareerRecipe(state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion);
+    // SeasonRequests indexa por seasonIndex do motor (uma entrada por temporada
+    // SIMULADA, não por chamada de API) — e uma única chamada pode revelar VÁRIAS
+    // temporadas de uma vez quando não há pausa de oferta no meio (ver Sim.tsx:
+    // fetchMore devolve todas as temporadas até a próxima pausa ou o fim). Por isso não
+    // dá pra só "acrescentar uma entrada por chamada": alinhamos pelo SeasonsRevealed já
+    // existente (== Timeline.Count), que é o único contador confiável de "quantas
+    // temporadas já fecharam". Truncar/preencher pra esse tamanho ANTES de anexar o
+    // pedido do jogador garante que ele cai exatamente na primeira temporada nova que
+    // esta chamada vai revelar — e não deslocaria pedidos já consumidos em replays
+    // anteriores se simplesmente incrementássemos por chamada.
+    var baseRequests = AlignedTo(state.SeasonRequests, state.SeasonsRevealed);
+    var seasonRequests = req.Decision is null
+        ? baseRequests.Append(req.Request ?? SeasonRequestKind.None).ToArray()
+        : baseRequests;
+
+    var recipe = new CareerRecipe(state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion, seasonRequests);
     var progress = simulator.AdvanceCareer(recipe);
 
+    // A temporada pausada (se houver) já consumiu seu próprio slot de SeasonRequests
+    // dentro do motor (fora dos limites do array = None), mas não entra em Timeline até
+    // ser resolvida — então NÃO preenchemos um slot extra pra ela aqui. Preencher só até
+    // Timeline.Count (temporadas de fato fechadas) é o que mantém essa temporada pausada
+    // lendo None de forma consistente em todo replay futuro, até ela mesma fechar.
+    int newTotal = progress.Result.Timeline.Count;
+    seasonRequests = AlignedTo(seasonRequests, newTotal);
+
     var newSeasons = progress.Result.Timeline.Skip(state.SeasonsRevealed).ToList();
-    var next = state with { TransferChoices = choices, SeasonsRevealed = progress.Result.Timeline.Count };
+    var next = state with { TransferChoices = choices, SeasonsRevealed = newTotal, SeasonRequests = seasonRequests };
 
     return Results.Ok(new AdvanceResponse(
         tokens.Issue(next), newSeasons, progress.PendingOffer, Finished: !progress.AwaitingDecision));
@@ -133,7 +156,7 @@ app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
     // transferência por vir, SimulateCareer trata como recusada (mesmo fallback de sempre).
     var recipe = new CareerRecipe(
         state.Seed, state.Country, state.DraftPicks, state.Position.Value,
-        state.TransferChoices, state.RulesetVersion);
+        state.TransferChoices, state.RulesetVersion, state.SeasonRequests);
     var result = simulator.SimulateCareer(recipe);
     var score = scorer.Score(result);
 
@@ -222,3 +245,14 @@ static ulong NextSeed()
 
 static List<LegendOption> ToOptions(IReadOnlyList<Legend> candidates, Attr attr) =>
     candidates.Select(l => new LegendOption(l.Name, l.Get(attr))).ToList();
+
+/// <summary>Trunca ou preenche com None até exatamente `length` entradas — usado pra
+/// manter SeasonRequests alinhado ao contador de temporadas fechadas (SeasonsRevealed /
+/// Timeline.Count) antes e depois de cada /careers/advance. Ver comentário no handler.</summary>
+static SeasonRequestKind[] AlignedTo(SeasonRequestKind[]? requests, int length)
+{
+    var r = requests ?? Array.Empty<SeasonRequestKind>();
+    if (r.Length == length) return r;
+    if (r.Length > length) return r.Take(length).ToArray();
+    return r.Concat(Enumerable.Repeat(SeasonRequestKind.None, length - r.Length)).ToArray();
+}

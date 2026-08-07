@@ -14,5 +14,8 @@ public sealed record CareerState(
     Pos? Position,
     string? Country,
     bool[] TransferChoices,
-    int SeasonsRevealed = 0
+    int SeasonsRevealed = 0,
+    /// <summary>Pedidos do painel Contrato + Técnico, um por temporada — ver
+    /// AdvanceRequest.Request e CareerRecipe.SeasonRequests.</summary>
+    SeasonRequestKind[]? SeasonRequests = null
 );

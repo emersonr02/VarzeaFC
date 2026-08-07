@@ -11,6 +11,11 @@ export type TitleKind =
   | "BallonDOr" | "TeamOfTheYear"
   | "SouthAmericanTeamOfTheYear" | "KingOfAmerica";
 
+// Painel Contrato + Técnico (roadmap pós-§9) — um pedido por temporada.
+export type SeasonRequestKind =
+  | "None" | "RequestRenewal" | "RequestLeaveAtContractEnd" | "RequestRaise"
+  | "RequestCaptaincy" | "RequestSetPieces";
+
 export interface MetaResponse {
   rulesetVersion: string;
   countries: string[];
@@ -71,6 +76,12 @@ export interface SeasonResult {
   // Contrato (Roadmap §9 Bloco 3)
   contractExpiring: boolean;
   contractRenewed: boolean;
+  // Painel Contrato + Técnico (roadmap pós-§9)
+  contractYearsRemaining: number;
+  isCaptain: boolean;
+  hasSetPieces: boolean;
+  requestMade: SeasonRequestKind;
+  requestGranted: boolean;
 }
 
 export interface PendingTransferOffer {

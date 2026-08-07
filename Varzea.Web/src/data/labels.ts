@@ -1,4 +1,4 @@
-import type { Attr, InjurySeverity, Pos, TitleKind } from "../api/types";
+import type { Attr, InjurySeverity, Pos, SeasonRequestKind, TitleKind } from "../api/types";
 
 // Mapeia os enums do motor (Varzea.Engine.Model) pros rótulos em português do
 // varzea-lendas.html original (POC aprovado). Os CÓDIGOS mudaram (GK/CB/FB... em vez de
@@ -51,6 +51,15 @@ export const TITLE_LABEL: Record<TitleKind, string> = {
   TeamOfTheYear: "Equipe do Ano",
   SouthAmericanTeamOfTheYear: "Equipe do Ano da América",
   KingOfAmerica: "Rei da América",
+};
+
+// Painel Contrato + Técnico (roadmap pós-§9) — rótulo curto de botão.
+export const SEASON_REQUEST_BUTTON_LABEL: Record<Exclude<SeasonRequestKind, "None">, string> = {
+  RequestRenewal: "Pedir renovação",
+  RequestLeaveAtContractEnd: "Avisar que quer sair no fim do contrato",
+  RequestRaise: "Pedir aumento",
+  RequestCaptaincy: "Pedir a braçadeira",
+  RequestSetPieces: "Pedir bolas paradas",
 };
 
 export const INJURY_LABEL: Record<InjurySeverity, string | null> = {

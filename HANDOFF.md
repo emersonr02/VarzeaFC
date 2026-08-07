@@ -477,3 +477,45 @@ Escalas de bloco (`Scoring.cs`): `TitleScale=4.4`, `AwardScale=2.6` (era 5,0),
    números acima — os três critérios são sensíveis a mudanças pequenas (ver o
    "whack-a-mole" do Bloco 1 nesta sessão: mexer na frequência de um prêmio sozinho não
    bastou, foi preciso também recalibrar `AwardScale`/`AwardCap`).
+
+## 10. Painel Contrato + Técnico (pós-§9, mesma sessão overnight)
+
+O utilizador pediu pra replicar parte de um dashboard de referência (print de outro jogo,
+estilo jogo-a-jogo) adaptado ao nosso modelo temporada-a-temporada: **Contrato**
+(temporadas restantes, pedir renovação antecipada, avisar que quer sair no fim do
+contrato, pedir aumento) e **Técnico** (pedir braçadeira, pedir bolas paradas). Escopo
+combinado via `AskUserQuestion` — Empresário/Saúde/Clube ficaram de fora.
+
+**Desenho**: um pedido por temporada (`SeasonRequestKind`), escolhido no dashboard antes
+de "Avançar". `CareerRecipe` ganhou `SeasonRequests` (opcional, `null`/vazio = comportamento
+idêntico ao motor de antes — não muda nada na amostra do Monte Carlo, sem necessidade de
+recalibrar pesos).
+
+**O ponto mais delicado**: uma única chamada de `/careers/advance` pode revelar VÁRIAS
+temporadas de uma vez (quando não há pausa de oferta no meio — `fetchMore` já devolve
+tudo até a próxima pausa ou o fim, `Sim.tsx` só pagina localmente depois). Isso quebra a
+ideia ingênua de "uma entrada em `SeasonRequests` por chamada de API": o array precisa se
+alinhar por `SeasonsRevealed`/`Timeline.Count` (que já existiam), não por contagem de
+chamadas — ver `Program.AlignedTo` e o comentário extenso no handler de `/careers/advance`.
+Um teste dedicado (`SeasonRequestTests.StepByStep_MatchesBatchSimulation_WithFinalSeasonRequests`)
+prova essa propriedade; a primeira versão do teste (e da lógica) tinha esse bug exato —
+pego pelo próprio teste antes de ir pra produção.
+
+**Mecânica**: `RequestRenewal`/`RequestLeaveAtContractEnd` mexem no ciclo de contrato já
+existente (Bloco 3); `RequestRaise` só afeta moral (sem sistema de dinheiro — fora de
+escopo); `RequestCaptaincy`/`RequestSetPieces` ficam concedidos pra sempre uma vez
+aprovados (`isCaptain`/`hasSetPieces`), e bolas paradas soma um bônus direto no `roleMod`
+de `Output()` pra gols/assistências.
+
+**Testado**: 18 testes (11 antigos + 5 seeds de equivalência + 2 de concessão/persistência),
+Monte Carlo idêntico ao baseline (confirmado byte-a-byte), e verificação end-to-end real
+via `fetch()` direto no `/careers/advance` do navegador — confirmando que o campo
+`request` chega, se aplica só à primeira temporada do lote, e as seguintes do mesmo lote
+ficam `None` corretamente. A interação manual completa (clicar botão → ver "✓ selecionado"
+→ avançar → ver narrativa de resultado) foi parcialmente testada no navegador: o painel
+renderiza, os dados ficam corretos, e o **estado desabilitado** (a parte crítica de
+segurança) foi confirmado repetidas vezes em cenários reais de fila cheia/oferta pendente
+— mas não caí num momento de fila genuinamente vazia pra clicar o botão HABILITADO com
+sucesso numa sessão manual (a seed de teste gerou lotes grandes o tempo todo). Não é um
+risco alto — a lógica do clique é um `onClick` trivial já revisado — mas fica registrado
+como a única perna sem confirmação visual direta de clique-completo.
