@@ -39,7 +39,10 @@ public enum SeasonRequestKind
     RequestCaptaincy,            // pede a braçadeira — concessão fica pra sempre
     RequestSetPieces,            // pede bolas paradas — concessão fica pra sempre, sobe gols/assist.
     RequestLeaveNow,             // pede pra sair JÁ (corte de escopo do Bloco 2 fechado) — busca oferta garantida, custa moral
-    RequestLoan                  // pede empréstimo (painel Empresário) — um tier abaixo por UMA temporada, depois volta
+    RequestLoan,                 // pede empréstimo (painel Empresário) — um tier abaixo por UMA temporada, depois volta
+    RequestRest,                 // painel Saúde: metade dos jogos esta temporada, reduz fadiga em vez de acumular
+    RequestPlayInjured,          // painel Saúde: joga mesmo se lesionar (decidido antes da lesão ser sorteada) — mais fadiga, risco de piorar
+    RequestPersonalTrainer       // painel Saúde: concessão fica pra sempre, reduz a taxa de acúmulo de fadiga daí em diante
 }
 
 /// <summary>Qual valor de moral um "dilema fictício" mexeu nesta temporada (Roadmap §9
@@ -146,6 +149,12 @@ public sealed class SeasonResult
     /// abaixo do clube dono do contrato, sempre por UMA temporada só. ClubTier já
     /// reflete o clube emprestado; este campo é só pro front narrar a diferença.</summary>
     public bool OnLoan { get; init; }
+
+    // --- Fadiga (painel Saúde, roadmap pós-§9) ---
+    /// <summary>Fadiga acumulada ao FIM desta temporada (0..~1.2) — sistema sempre
+    /// ativo, não depende de nenhum SeasonRequest ter sido feito.</summary>
+    public double Fatigue { get; init; }
+    public bool HasPersonalTrainer { get; init; }
 
     /// <summary>O pedido feito ANTES desta temporada (via SeasonRequests), e se foi
     /// concedido. None = nenhum pedido feito nesta temporada.</summary>

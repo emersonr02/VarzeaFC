@@ -345,6 +345,13 @@ function moraleIcon(v: number): string {
   return "😠";
 }
 
+// Fadiga (painel Saúde, roadmap pós-§9): ícone por faixa, 0..~1.2 (FatigueMax no motor).
+function fatigueIcon(v: number): string {
+  if (v < 0.25) return "🟢";
+  if (v < 0.6) return "🟡";
+  return "🔴";
+}
+
 function moraleNote(season: SeasonResult): string | null {
   if (season.askedToLeave) return "😤 O clima no vestiário azedou — você deixou claro que quer sair.";
   if (season.declinedBiggerClub) return "❤️ Recusou uma proposta de fora e a torcida vibrou com a lealdade.";
@@ -368,6 +375,9 @@ function requestNote(season: SeasonResult): string | null {
     case "RequestCaptaincy": return season.requestGranted ? "🎖️ Pediu a braçadeira — agora é o capitão!" : "🎖️ Pediu a braçadeira — não rolou desta vez.";
     case "RequestSetPieces": return season.requestGranted ? "🎯 Pediu bolas paradas — concedido!" : "🎯 Pediu bolas paradas — negado.";
     case "RequestLoan": return season.requestGranted ? "🔄 Pediu empréstimo — foi pra outro clube por esta temporada." : "🔄 Pediu empréstimo — o clube preferiu manter você.";
+    case "RequestRest": return "😴 Pediu descanso — jogou menos, mas recuperou fôlego.";
+    case "RequestPlayInjured": return season.requestGranted ? "🩹 Insistiu em jogar lesionado." : "🩹 Estava disposto a jogar lesionado, mas não precisou.";
+    case "RequestPersonalTrainer": return season.requestGranted ? "💪 Contratou um personal trainer — vai cansar menos daqui pra frente." : "💪 Já tinha um personal trainer.";
     default: return null;
   }
 }
@@ -538,6 +548,17 @@ function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <RequestButton kind="RequestLoan" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div className="dash-k">Saúde</div>
+          <div className="dash-v" style={{ fontSize: 14 }}>{fatigueIcon(lastSeason.fatigue)} Fadiga {Math.round(Math.min(1, lastSeason.fatigue) * 100)}%</div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <RequestButton kind="RequestRest" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          <RequestButton kind="RequestPlayInjured" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          <RequestButton kind="RequestPersonalTrainer" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasPersonalTrainer} onSelect={onSelect} />
         </div>
       </div>
       {pendingRequest && (

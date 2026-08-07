@@ -14,7 +14,8 @@ export type TitleKind =
 // Painel Contrato + Técnico (roadmap pós-§9) — um pedido por temporada.
 export type SeasonRequestKind =
   | "None" | "RequestRenewal" | "RequestLeaveAtContractEnd" | "RequestRaise"
-  | "RequestCaptaincy" | "RequestSetPieces" | "RequestLeaveNow" | "RequestLoan";
+  | "RequestCaptaincy" | "RequestSetPieces" | "RequestLeaveNow" | "RequestLoan"
+  | "RequestRest" | "RequestPlayInjured" | "RequestPersonalTrainer";
 
 export type DilemmaTarget = "None" | "Team" | "Coach" | "Crowd";
 
@@ -88,6 +89,10 @@ export interface SeasonResult {
   // Painel Empresário (roadmap pós-§9): temporada jogada emprestado, um tier abaixo,
   // sempre por UMA temporada — clubTier já reflete o clube emprestado.
   onLoan: boolean;
+  // Painel Saúde (roadmap pós-§9): fadiga acumulada ao fim desta temporada (sistema
+  // sempre ativo, não depende de nenhum pedido) e se tem personal trainer (permanente).
+  fatigue: number;
+  hasPersonalTrainer: boolean;
   requestMade: SeasonRequestKind;
   requestGranted: boolean;
 }

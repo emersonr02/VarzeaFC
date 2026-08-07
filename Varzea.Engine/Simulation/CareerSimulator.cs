@@ -78,6 +78,17 @@ public sealed class CareerSimulator
     /// sem dominar os outros sistemas.</summary>
     private const double MoralPerfWeight = 6.0;
 
+    /// <summary>Quanto a fadiga acumulada (0..~1.2) desconta perf (painel Saúde,
+    /// roadmap pós-§9) — único sistema desta rodada que NÃO é opt-in (acumula um pouco
+    /// toda temporada, mesmo sem o jogador tocar no painel), então precisa de
+    /// recalibração via Monte Carlo após implementado (ver HANDOFF §9). Chute inicial na
+    /// mesma ordem de grandeza de MoralPerfWeight.</summary>
+    private const double FatiguePerfWeight = 8.0;
+
+    /// <summary>Teto de fadiga acumulada — sem isto, uma carreira longa sem nenhum
+    /// descanso acumularia fadiga sem limite (ver acúmulo de fim de temporada abaixo).</summary>
+    private const double FatigueMax = 1.2;
+
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
         var working = new List<Legend>(pool);
@@ -190,6 +201,13 @@ public sealed class CareerSimulator
         // temporada seguinte — o empréstimo dura sempre exatamente uma temporada.
         int parentTier = -1;
 
+        // --- FADIGA (painel Saúde, roadmap pós-§9) ---
+        // Único sistema desta rodada SEMPRE ATIVO (não opt-in) — acumula um pouco a
+        // cada temporada jogada, mesmo sem nenhum SeasonRequest. Começa em 0 (jogador
+        // de 16 anos, descansado); nunca sai de [0, FatigueMax] (ver Clamp abaixo).
+        double fatigue = 0;
+        bool hasPersonalTrainer = false;
+
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
             if (parentTier >= 0)
@@ -218,6 +236,12 @@ public sealed class CareerSimulator
             // resultados abaixo, então não pode se autoalimentar na mesma iteração.
             double moraleAtStart = (teamMorale + coachMorale + crowdMorale) / 3.0;
             perf += moraleAtStart * MoralPerfWeight;
+
+            // Fadiga desconta perf (painel Saúde) — mesmo padrão de moraleAtStart: usa o
+            // valor acumulado ATÉ O FIM da temporada anterior, nunca o desta (calculado
+            // só depois, no acúmulo de fim de temporada abaixo).
+            double fatigueAtStart = fatigue;
+            perf -= fatigueAtStart * FatiguePerfWeight;
 
             // --- PEDIDOS DO JOGADOR (painel Contrato + Técnico, roadmap pós-§9) ---
             // Resolvido AQUI (antes de apps/Output) pra que bolas paradas já valha nesta
@@ -303,10 +327,11 @@ public sealed class CareerSimulator
                     // Painel Empresário: declaração de intenção, "aceita" por construção
                     // (mesmo padrão de RequestLeaveAtContractEnd) — só não pode empilhar
                     // com um empréstimo já em curso. Um tier abaixo por UMA temporada
-                    // (restaurado no topo da iteração seguinte, ver parentTier acima);
-                    // o tier mais fácil já entra no cálculo de perf desta mesma temporada
-                    // (target um degrau abaixo), o que cobre o "mais minutos" do pedido
-                    // sem precisar de um sistema de apps separado.
+                    // (restaurado no topo da iteração seguinte, ver parentTier acima).
+                    // target/perf desta temporada já foram calculados com o tier ANTIGO
+                    // (linhas acima) — a mudança só aparece no ClubTier da temporada
+                    // (season.ClubTier = tier é lido depois do switch) e no que vier a
+                    // seguir (ofertas/contrato usam o tier atual).
                     if (parentTier < 0 && tier > 1)
                     {
                         requestGranted = true;
@@ -314,21 +339,81 @@ public sealed class CareerSimulator
                         tier = Math.Max(1, tier - 1);
                     }
                     break;
+                case SeasonRequestKind.RequestPersonalTrainer:
+                    // Painel Saúde: concessão fica pra sempre (mesmo padrão de
+                    // isCaptain/hasSetPieces) — reduz a taxa de acúmulo de fadiga daí em
+                    // diante (ver acúmulo de fim de temporada abaixo).
+                    if (!hasPersonalTrainer)
+                    {
+                        hasPersonalTrainer = true;
+                        requestGranted = true;
+                    }
+                    break;
+                // RequestRest e RequestPlayInjured não são resolvidos aqui: o primeiro
+                // precisa de `apps` (só calculado mais abaixo), o segundo precisa saber
+                // se a lesão sorteada (RollInjury, logo abaixo) realmente aconteceu —
+                // ambos são lidos diretamente de `request` nos pontos certos.
             }
             seasonIndex++;
 
             var injury = RollInjury(rng, age);
+
+            // Jogar lesionado (painel Saúde): decidido ANTES da lesão ser sorteada (like
+            // todo o sistema de pedidos — um por temporada, escolhido no dashboard antes
+            // de "Avançar"), então é uma aposta: "se eu me machucar esta temporada, jogo
+            // mesmo assim". Só tem efeito se realmente houve lesão; senão o pedido não
+            // muda nada (fica RequestGranted=false, narrado como "não precisou" no front).
+            bool playedThroughInjury = false;
+            if (request == SeasonRequestKind.RequestPlayInjured && injury != InjurySeverity.None)
+            {
+                playedThroughInjury = true;
+                requestGranted = true;
+                if (rng.Chance(0.08)) injury = EscalateInjury(injury);
+            }
+
             if (injury == InjurySeverity.CareerEnding)
             {
+                // Mesmo aqui (fim abrupto de carreira, antes do resto da temporada ser
+                // resolvido), os estados já decididos ATÉ este ponto da iteração são
+                // reais e valem a pena carregar — sem isto, concessões permanentes como
+                // braçadeira/bolas paradas "somem" retroativamente do Timeline se a
+                // última temporada da carreira for justamente a que encerra tudo.
+                // Campos calculados só MAIS ABAIXO (dilemas, contrato, transferência)
+                // ficam no valor padrão — a temporada nunca chegou lá.
                 result.Timeline.Add(new SeasonResult
                 {
                     Age = age, Overall = overall, ClubTier = tier,
-                    Injury = injury, LeaguePosition = 20
+                    Injury = injury, LeaguePosition = 20,
+                    TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
+                    IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
+                    Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
+                    RequestMade = request, RequestGranted = requestGranted
                 });
                 break;
             }
 
-            int apps = Math.Clamp(rng.NextInt(24, 36) - InjuryCost(injury, rng), 4, 38);
+            bool restedThisSeason = request == SeasonRequestKind.RequestRest;
+
+            int apps = playedThroughInjury
+                ? Math.Clamp(rng.NextInt(24, 36), 4, 38)
+                : Math.Clamp(rng.NextInt(24, 36) - InjuryCost(injury, rng), 4, 38);
+            if (restedThisSeason)
+            {
+                apps = Math.Max(1, apps / 2);
+                requestGranted = true;
+            }
+
+            // Acúmulo de fadiga de fim de temporada (painel Saúde) — sempre ativo, não
+            // depende de nenhum SeasonRequest ter sido feito. Descansar reduz em vez de
+            // acumular; jogar lesionado soma um custo extra por cima do acúmulo normal
+            // (apps não foi cortado pela lesão, então o acúmulo normal já é o de uma
+            // temporada cheia). Clamp em [0, FatigueMax] pra nunca crescer sem limite.
+            if (restedThisSeason)
+                fatigue = Math.Clamp(fatigue - 0.15, 0, FatigueMax);
+            else
+                fatigue = Math.Clamp(fatigue + (apps / 34.0) * (hasPersonalTrainer ? 0.025 : 0.04), 0, FatigueMax);
+            if (playedThroughInjury)
+                fatigue = Math.Clamp(fatigue + 0.12, 0, FatigueMax);
 
             // Bolas paradas (painel Técnico, roadmap pós-§9): bônus fica pra sempre uma
             // vez concedido, soma direto no roleMod que Output() já usa.
@@ -687,6 +772,7 @@ public sealed class CareerSimulator
                 ContractExpiring = contractExpiring, ContractRenewed = contractRenewed,
                 ContractYearsRemaining = Math.Max(0, contractDuration - contractYear),
                 IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
+                Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
                 RequestMade = request, RequestGranted = requestGranted
             };
             finished.Titles.AddRange(season.Titles);
@@ -784,6 +870,16 @@ public sealed class CareerSimulator
         InjurySeverity.Moderate => rng.NextInt(8, 16),
         InjurySeverity.Severe => rng.NextInt(16, 26),
         _ => 0
+    };
+
+    /// <summary>Um degrau mais grave — usado por RequestPlayInjured (painel Saúde): 8%
+    /// de chance de piorar quando o jogador insiste em jogar machucado.</summary>
+    private static InjurySeverity EscalateInjury(InjurySeverity s) => s switch
+    {
+        InjurySeverity.Minor => InjurySeverity.Moderate,
+        InjurySeverity.Moderate => InjurySeverity.Severe,
+        InjurySeverity.Severe => InjurySeverity.CareerEnding,
+        _ => s
     };
 
     private static int Output(Pcg32 rng, int overall, double factor, double baseline,

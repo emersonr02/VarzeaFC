@@ -307,4 +307,92 @@ public class SeasonRequestTests
         Assert.True(firstCaptainIdx >= 0, "pedindo braçadeira toda temporada, deveria ser concedida em algum momento nesta carreira");
         Assert.All(result.Timeline.Skip(firstCaptainIdx), s => Assert.True(s.IsCaptain));
     }
+
+    // --- Fadiga (painel Saúde, roadmap pós-§9) — único sistema desta rodada SEMPRE
+    // ATIVO, não depende de nenhum SeasonRequest ter sido feito.
+
+    [Fact]
+    public void Fatigue_AccumulatesEvenWithoutAnyRequest()
+    {
+        var sim = new CareerSimulator(Rules);
+        var recipe = BaseRecipe(7); // SeasonRequests null — comportamento padrão
+
+        var result = sim.SimulateCareer(recipe);
+        Assert.True(result.Timeline.Count > 3, "carreira precisa de temporadas suficientes pro acúmulo ficar visível");
+        Assert.True(result.Timeline[3].Fatigue > 0, "fadiga deveria acumular sozinha, mesmo sem o jogador nunca abrir o painel Saúde");
+        // Nunca decresce sozinha (só RequestRest reduz) — não-decrescente até aqui.
+        for (int i = 1; i <= 3; i++)
+            Assert.True(result.Timeline[i].Fatigue >= result.Timeline[i - 1].Fatigue);
+    }
+
+    private static readonly SeasonRequestKind[] AlwaysRest =
+        Enumerable.Repeat(SeasonRequestKind.RequestRest, 25).ToArray();
+
+    [Fact]
+    public void RequestRest_HalvesAppsAndReducesFatigue_ComparedToNoRest()
+    {
+        var sim = new CareerSimulator(Rules);
+        var baseRecipe = BaseRecipe(7);
+
+        var rested = sim.SimulateCareer(baseRecipe with { SeasonRequests = AlwaysRest });
+        var baseline = sim.SimulateCareer(baseRecipe); // sem pedidos — mesmo seed, mesma carreira "crua"
+
+        var restedFirst = rested.Timeline[0];
+        var baselineFirst = baseline.Timeline[0];
+        Assert.True(restedFirst.RequestGranted);
+        Assert.Equal(SeasonRequestKind.RequestRest, restedFirst.RequestMade);
+
+        // apps é sorteado a partir do MESMO rng (seed idêntica, nada antes disso na
+        // temporada consome rng de forma diferente) — descansar só corta pela metade
+        // DEPOIS do sorteio, então a comparação direta é válida.
+        Assert.True(restedFirst.Apps <= baselineFirst.Apps / 2 + 1);
+        Assert.True(restedFirst.Fatigue < baselineFirst.Fatigue, "descansar deveria acumular MENOS fadiga que a temporada normal equivalente");
+    }
+
+    private static readonly SeasonRequestKind[] PersonalTrainerThenNone =
+        new[] { SeasonRequestKind.RequestPersonalTrainer }
+            .Concat(Enumerable.Repeat(SeasonRequestKind.None, 24)).ToArray();
+
+    [Fact]
+    public void RequestPersonalTrainer_StaysGranted_AndSlowsFatigueAccumulation()
+    {
+        var sim = new CareerSimulator(Rules);
+        var baseRecipe = BaseRecipe(7);
+
+        var withTrainer = sim.SimulateCareer(baseRecipe with { SeasonRequests = PersonalTrainerThenNone });
+        var baseline = sim.SimulateCareer(baseRecipe);
+
+        Assert.True(withTrainer.Timeline[0].RequestGranted);
+        Assert.All(withTrainer.Timeline, s => Assert.True(s.HasPersonalTrainer, "concessão fica pra sempre, mesmo padrão de isCaptain/hasSetPieces"));
+
+        // Depois de várias temporadas, a taxa reduzida (0.025 vs 0.04 por temporada)
+        // deveria deixar a fadiga acumulada visivelmente menor que o baseline sem
+        // personal trainer — carreiras idênticas em tudo mais (mesma seed).
+        int lastIdx = Math.Min(withTrainer.Timeline.Count, baseline.Timeline.Count) - 1;
+        Assert.True(lastIdx >= 5, "carreira precisa de temporadas suficientes pra taxa reduzida fazer diferença visível");
+        Assert.True(withTrainer.Timeline[lastIdx].Fatigue < baseline.Timeline[lastIdx].Fatigue);
+    }
+
+    // Pede em toda temporada — o pedido só tem efeito nas que realmente sortearem
+    // lesão (ver CareerSimulator), então precisa de várias tentativas pra pegar uma.
+    private static readonly SeasonRequestKind[] AlwaysPlayInjured =
+        Enumerable.Repeat(SeasonRequestKind.RequestPlayInjured, 25).ToArray();
+
+    [Fact]
+    public void RequestPlayInjured_OnlyMattersWhenInjuryActuallyRolled()
+    {
+        var sim = new CareerSimulator(Rules);
+        var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPlayInjured };
+
+        var result = sim.SimulateCareer(recipe);
+
+        // Toda temporada com RequestGranted=true precisa ter uma lesão de verdade —
+        // o pedido não faz nada numa temporada sem lesão (ver comentário no motor).
+        foreach (var season in result.Timeline.Where(s => s.RequestMade == SeasonRequestKind.RequestPlayInjured))
+        {
+            if (season.RequestGranted)
+                Assert.NotEqual(InjurySeverity.None, season.Injury);
+        }
+        Assert.Contains(result.Timeline, s => s.RequestMade == SeasonRequestKind.RequestPlayInjured && s.RequestGranted);
+    }
 }
