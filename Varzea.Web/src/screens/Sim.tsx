@@ -378,6 +378,7 @@ function requestNote(season: SeasonResult): string | null {
     case "RequestRest": return "😴 Pediu descanso — jogou menos, mas recuperou fôlego.";
     case "RequestPlayInjured": return season.requestGranted ? "🩹 Insistiu em jogar lesionado." : "🩹 Estava disposto a jogar lesionado, mas não precisou.";
     case "RequestPersonalTrainer": return season.requestGranted ? "💪 Contratou um personal trainer — vai cansar menos daqui pra frente." : "💪 Já tinha um personal trainer.";
+    case "RequestPromiseTitle": return season.promiseFulfilled ? "🏆 Prometeu o título pra torcida — e cumpriu!" : "😬 Prometeu o título pra torcida — e não entregou.";
     default: return null;
   }
 }
@@ -559,6 +560,17 @@ function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
           <RequestButton kind="RequestRest" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
           <RequestButton kind="RequestPlayInjured" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
           <RequestButton kind="RequestPersonalTrainer" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasPersonalTrainer} onSelect={onSelect} />
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div className="dash-k">Clube</div>
+          <div className="dash-v" style={{ fontSize: 14 }}>
+            {lastSeason.promisedTitle ? (lastSeason.promiseFulfilled ? "🏆 Promessa cumprida" : "😬 Promessa quebrada") : "Sem promessa"}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <RequestButton kind="RequestPromiseTitle" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
         </div>
       </div>
       {pendingRequest && (

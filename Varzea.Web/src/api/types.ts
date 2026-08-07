@@ -15,7 +15,7 @@ export type TitleKind =
 export type SeasonRequestKind =
   | "None" | "RequestRenewal" | "RequestLeaveAtContractEnd" | "RequestRaise"
   | "RequestCaptaincy" | "RequestSetPieces" | "RequestLeaveNow" | "RequestLoan"
-  | "RequestRest" | "RequestPlayInjured" | "RequestPersonalTrainer";
+  | "RequestRest" | "RequestPlayInjured" | "RequestPersonalTrainer" | "RequestPromiseTitle";
 
 export type DilemmaTarget = "None" | "Team" | "Coach" | "Crowd";
 
@@ -93,6 +93,10 @@ export interface SeasonResult {
   // sempre ativo, não depende de nenhum pedido) e se tem personal trainer (permanente).
   fatigue: number;
   hasPersonalTrainer: boolean;
+  // Painel Clube (roadmap pós-§9): promessa de campeonato feita antes desta temporada,
+  // e se foi cumprida — promisedTitle=false quando nenhuma promessa foi feita.
+  promisedTitle: boolean;
+  promiseFulfilled: boolean;
   requestMade: SeasonRequestKind;
   requestGranted: boolean;
 }

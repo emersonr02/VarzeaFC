@@ -339,6 +339,13 @@ public sealed class CareerSimulator
                         tier = Math.Max(1, tier - 1);
                     }
                     break;
+                case SeasonRequestKind.RequestPromiseTitle:
+                    // Declaração pública pra torcida/imprensa — "aceita" por construção
+                    // (mesmo padrão de RequestLeaveAtContractEnd); o que importa de
+                    // verdade (cumpriu ou quebrou) é resolvido lá embaixo, no bloco
+                    // "--- LIGA ---", quando season.LeaguePosition já é conhecido.
+                    requestGranted = true;
+                    break;
                 case SeasonRequestKind.RequestPersonalTrainer:
                     // Painel Saúde: concessão fica pra sempre (mesmo padrão de
                     // isCaptain/hasSetPieces) — reduz a taxa de acúmulo de fadiga daí em
@@ -441,6 +448,27 @@ public sealed class CareerSimulator
                 };
                 season.Titles.Add(kind);
                 result.AddTitle(kind);
+            }
+
+            // Promessa de título (painel Clube, roadmap pós-§9): resolvida assim que
+            // season.LeaguePosition é conhecido — cumprida (campeão da liga NACIONAL,
+            // não copas/continental) dá um bônus de moral grande (empilha com o que a
+            // torcida já sente por ser campeã); quebrada custa moral, promessa vazia.
+            bool promisedTitle = request == SeasonRequestKind.RequestPromiseTitle;
+            bool promiseFulfilled = false;
+            if (promisedTitle)
+            {
+                promiseFulfilled = season.LeaguePosition == 1;
+                if (promiseFulfilled)
+                {
+                    teamMorale = Math.Clamp(teamMorale + 0.15, -1.0, 1.0);
+                    crowdMorale = Math.Clamp(crowdMorale + 0.20, -1.0, 1.0);
+                }
+                else
+                {
+                    teamMorale = Math.Clamp(teamMorale - 0.10, -1.0, 1.0);
+                    crowdMorale = Math.Clamp(crowdMorale - 0.15, -1.0, 1.0);
+                }
             }
 
             // --- COPA NACIONAL ---
@@ -773,6 +801,7 @@ public sealed class CareerSimulator
                 ContractYearsRemaining = Math.Max(0, contractDuration - contractYear),
                 IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
                 Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
+                PromisedTitle = promisedTitle, PromiseFulfilled = promiseFulfilled,
                 RequestMade = request, RequestGranted = requestGranted
             };
             finished.Titles.AddRange(season.Titles);

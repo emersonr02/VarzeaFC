@@ -42,7 +42,8 @@ public enum SeasonRequestKind
     RequestLoan,                 // pede empréstimo (painel Empresário) — um tier abaixo por UMA temporada, depois volta
     RequestRest,                 // painel Saúde: metade dos jogos esta temporada, reduz fadiga em vez de acumular
     RequestPlayInjured,          // painel Saúde: joga mesmo se lesionar (decidido antes da lesão ser sorteada) — mais fadiga, risco de piorar
-    RequestPersonalTrainer       // painel Saúde: concessão fica pra sempre, reduz a taxa de acúmulo de fadiga daí em diante
+    RequestPersonalTrainer,      // painel Saúde: concessão fica pra sempre, reduz a taxa de acúmulo de fadiga daí em diante
+    RequestPromiseTitle          // painel Clube: promete campeonato pra torcida — cumprida dá moral grande, quebrada custa moral
 }
 
 /// <summary>Qual valor de moral um "dilema fictício" mexeu nesta temporada (Roadmap §9
@@ -155,6 +156,14 @@ public sealed class SeasonResult
     /// ativo, não depende de nenhum SeasonRequest ter sido feito.</summary>
     public double Fatigue { get; init; }
     public bool HasPersonalTrainer { get; init; }
+
+    // --- Promessa de título (painel Clube, roadmap pós-§9) ---
+    /// <summary>Prometeu ser campeão da liga NACIONAL esta temporada (via
+    /// RequestPromiseTitle) — false quando nenhuma promessa foi feita.</summary>
+    public bool PromisedTitle { get; init; }
+    /// <summary>Só tem sentido quando PromisedTitle é true: cumpriu (campeão) ou
+    /// quebrou a promessa.</summary>
+    public bool PromiseFulfilled { get; init; }
 
     /// <summary>O pedido feito ANTES desta temporada (via SeasonRequests), e se foi
     /// concedido. None = nenhum pedido feito nesta temporada.</summary>

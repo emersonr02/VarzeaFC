@@ -467,10 +467,10 @@ Escalas de bloco (`Scoring.cs`): `TitleScale=4.4`, `AwardScale=2.6` (era 5,0),
 ### O que falta pra fechar de vez (pra revisão de amanhã)
 1. **Testar o "modo jogo a jogo" com os 3 blocos** — só foi testado o modo "temporada a
    temporada" nesta sessão (é o único implementado, ver secção 7 item 7).
-2. Decidir se vale a pena construir os cortes de escopo do Bloco 2/3 listados acima
-   (ação manual de "pedir pra sair", conteúdo narrativo de dilemas, múltiplas propostas
-   simultâneas na não-renovação) — nenhum deles quebra nada hoje, só entregam menos do
-   que o texto original do roadmap pedia.
+2. ~~Decidir se vale a pena construir os cortes de escopo do Bloco 2/3 listados acima~~
+   **Feito — ver secção 11.** Os 3 cortes (RequestLeaveNow, dilemas com conteúdo
+   variado, múltiplas propostas na não-renovação) e os 3 painéis que faltavam
+   (Empresário, Saúde, Clube) foram todos implementados numa rodada de 5 passos.
 3. Ainda não mesclado no `Varzea.Web`: nenhum PR pendente — tudo foi commitado direto em
    `main` nesta sessão (branch única, sem PR intermediário).
 4. Rodar `dotnet test`/Monte Carlo mais uma vez depois de qualquer ajuste manual nos
@@ -496,7 +496,9 @@ temporadas de uma vez (quando não há pausa de oferta no meio — `fetchMore` j
 tudo até a próxima pausa ou o fim, `Sim.tsx` só pagina localmente depois). Isso quebra a
 ideia ingênua de "uma entrada em `SeasonRequests` por chamada de API": o array precisa se
 alinhar por `SeasonsRevealed`/`Timeline.Count` (que já existiam), não por contagem de
-chamadas — ver `Program.AlignedTo` e o comentário extenso no handler de `/careers/advance`.
+chamadas — ver o comentário extenso no handler de `/careers/advance` (a lógica evoluiu na
+secção 11: o `Program.AlignedTo` original truncava demais e foi substituído por um
+padding que nunca encolhe o array, depois de um bug real encontrado em produção).
 Um teste dedicado (`SeasonRequestTests.StepByStep_MatchesBatchSimulation_WithFinalSeasonRequests`)
 prova essa propriedade; a primeira versão do teste (e da lógica) tinha esse bug exato —
 pego pelo próprio teste antes de ir pra produção.
@@ -519,3 +521,115 @@ segurança) foi confirmado repetidas vezes em cenários reais de fila cheia/ofer
 sucesso numa sessão manual (a seed de teste gerou lotes grandes o tempo todo). Não é um
 risco alto — a lógica do clique é um `onClick` trivial já revisado — mas fica registrado
 como a única perna sem confirmação visual direta de clique-completo.
+
+## 11. Cortes de escopo do Bloco 2/3 + painéis Empresário/Saúde/Clube (rodada de 5 passos, pós-§9)
+
+Utilizador pediu, nesta ordem: fechar os cortes de escopo do Bloco 2 (moral) e Bloco 3
+(contratos) listados na secção 9, depois os três painéis do dashboard que ainda faltavam
+(Empresário, Saúde, Clube — a secção 10 só cobriu Contrato + Técnico). Jogo-a-jogo e
+login continuam fora, pós-lançamento (secção 9). Cada passo seguiu o mesmo ritual:
+`dotnet build` → `dotnet test` → Monte Carlo (10k carreiras) → `npm run build` →
+verificação real (HTTP direto e/ou navegador) → commit → push, um commit por passo.
+
+**Passo 1 — `RequestLeaveNow` + dilemas com conteúdo variado.** Novo `SeasonRequestKind`
+que reaproveita 100% o fluxo de oferta já existente (`forceOfferSearch`, busca
+garantida em vez de só chance maior), custa moral concedido ou não. Dilemas fictícios
+(secção 9 Bloco 2) ganharam `DilemmaTarget`/`DilemmaPositive`/`DilemmaVariant` expostos
+pelo motor — o front (`data/dilemmas.ts`) escolhe entre 18 frases em vez de uma mensagem
+genérica. **Bug real encontrado e corrigido nesta sessão**: um pedido anexado numa
+temporada que PAUSA na mesma chamada (`RequestLeaveNow` força isso sempre) era perdido na
+chamada seguinte — o realinhamento pós-chamada usava só `Timeline.Count`, que não conta a
+temporada ainda pausada. Corrigido contando `+1` quando sobra qualquer pausa pendente, e
+nunca truncando o array (só preenchendo com `None`); o `Program.AlignedTo` antigo (que
+truncava) foi removido. Regressão coberta por
+`SeasonRequestTests.RequestLeaveNow_SurvivesReplay_WhenItImmediatelyPausesTheSameCall`.
+Opt-in — Monte Carlo idêntico ao baseline.
+
+**Passo 2 — múltiplas propostas na não-renovação.** Peça arquitetural: contrato vencido
+sem renovação (natural ou via `RequestLeaveAtContractEnd`, já existente) agora gera 1-3
+`ContractProposalOption` (tier atual sempre entra; tier+1 com chance crescente conforme
+`overall` supera o alvo; tier+1 "esticado" só pra `overall>=85`) em vez de uma oferta
+única. Segundo tipo de pausa/decisão do motor: `PendingContractChoice` (análogo a
+`PendingTransferOffer`, mas com `ContractChoices: int[]` em vez de `bool[]`, já que
+"1 de N" não cabe num bool — índice inválido/-1 = recusou todas, contrato curto de
+"prova", mesmo desfecho de antes). `CareerProgress.AwaitingDecision` passou a ser
+`PendingOffer is not null || PendingContractChoice is not null`. **Importante**: este
+passo NÃO é opt-in no sentido estrito — toda não-renovação (mesmo sem nenhum
+`SeasonRequest`) passa a gerar propostas em vez do fluxo antigo; como o Monte Carlo nunca
+passa `ContractChoices`, o comportamento efetivo pra amostra padrão é "recusa todas as
+propostas" (`Array.Empty<int>()` → índice sempre fora dos limites) — o Monte Carlo ficou
+byte-a-byte diferente do Passo 1 nesse sentido, mas os 3 critérios de aceite continuaram
+batendo sem precisar mexer em pesos (verificado, `rarity-weights.json` sem diff).
+Frontend ganhou `ContractChoiceClip` (cartão por proposta + "recusar todas").
+
+**Passo 3 — painel Empresário: `RequestLoan`.** Um tier abaixo por exatamente UMA
+temporada — `parentTier` (loop-local, -1 = não emprestado) guarda o tier do clube dono do
+contrato e é restaurado no TOPO da iteração seguinte, antes de qualquer pedido novo ser
+avaliado (por isso pedir empréstimo toda temporada dá "emprestado, volta, emprestado de
+novo", nunca uma espiral pra baixo). `SeasonResult.ClubTier` já reflete o clube emprestado
+na própria temporada (o campo é lido DEPOIS do switch de pedidos); `target`/`perf` dessa
+mesma temporada usam o tier ANTIGO (calculados ANTES do switch) — só a temporada seguinte
+sente o efeito de dificuldade do tier. Opt-in — Monte Carlo idêntico.
+
+**Passo 4 — painel Saúde: fadiga sempre ativa (único passo que mudou a amostra).**
+Acumula toda temporada (`fatigue += (apps/34) * taxa`, taxa 0.04 ou 0.025 com personal
+trainer), mesmo sem o jogador nunca abrir o painel — desconta `perf` via
+`FatiguePerfWeight=8.0` (mesma ordem de grandeza de `MoralPerfWeight=6.0`), clamped em
+`[0, FatigueMax=1.2]`. Três pedidos novos: `RequestRest` (metade dos jogos, `fatigue -=
+0.15` em vez de acumular), `RequestPlayInjured` (decidido ANTES da lesão ser sorteada —
+é uma aposta "se eu me machucar, jogo mesmo assim"; só tem efeito se a lesão realmente
+aconteceu: ignora o corte de `apps`, soma `fatigue += 0.12`, 8% de chance de piorar um
+degrau via `EscalateInjury`), `RequestPersonalTrainer` (permanente, reduz a taxa). Passou
+nos 3 critérios de aceite de primeira com `FatiguePerfWeight=8.0` (sem precisar iterar).
+**Gap real encontrado pelos próprios testes**: o `SeasonResult` do fim abrupto de carreira
+(lesão `CareerEnding`) só preenchia `Age`/`Overall`/`ClubTier`/`Injury`/`LeaguePosition` —
+um teste de braçadeira (`Captaincy_OnceGranted_StaysGrantedForRestOfCareer`) começou a
+falhar porque essa temporada final "esquecia" `IsCaptain` (e teria esquecido `OnLoan`,
+`Fatigue`, etc.) — não é bug do Passo 4 em si, é um gap que sempre existiu mas nenhuma
+seed testada antes tinha batido nesse caminho. Corrigido carregando todos os estados já
+decididos até aquele ponto da iteração pro registro final. `rarity-weights.json`
+recalibrado (`ContinentalPrimary` 4,0→4,7 — fadiga reduz picos de performance
+sustentados, menos carreiras chegam lá com a mesma frequência de antes).
+
+**Passo 5 — painel Clube: `RequestPromiseTitle`.** Promete ser campeão da liga NACIONAL
+(não copas/continental) — resolvido no bloco `--- LIGA ---` já existente, assim que
+`season.LeaguePosition` é conhecido. Cumprida: `teamMorale+=0.15`, `crowdMorale+=0.20`
+(empilha com o bônus normal de título). Quebrada: `teamMorale-=0.10`, `crowdMorale-=0.15`.
+Opt-in — Monte Carlo idêntico ao Passo 4 (mesmos números, `rarity-weights.json` sem diff).
+
+### Calibração final desta rodada (ruleset 1.1.0, depois dos 5 passos, 10.000 carreiras)
+
+| Título | Frequência | Peso |
+|---|---:|---:|
+| Rei da América | 1,16% | 18,0 |
+| Bola de Ouro | 2,97% | 14,2 |
+| Liga menor | 8,42% | 10,0 |
+| Copa do Mundo | 8,76% | 9,8 |
+| Equipe do Ano da América | 10,14% | 9,2 |
+| Continental secundária | 21,11% | 6,3 |
+| Equipe do Ano | 22,24% | 6,1 |
+| Continental principal | 31,25% | 4,7 |
+| Liga média | 33,29% | 4,4 |
+| Liga top-5 | 41,62% | 3,5 |
+| Copa nacional | 63,80% | 1,8 |
+
+**Critérios de aceite:** mediana=81, p99=317, máx=512, top 1%: 99/100 scores distintos,
+dispersão 38% ✔ · todas as 9 posições no top 10% (4,1%-17,8%) ✔ · contribuição por bloco
+(top 10%): títulos 65,9% (~60%) · prêmios 25,0% (~25%) · produção 6,5% (~10%) · pico 2,6%
+(~5%) ✔.
+
+### Testes desta rodada
+26 testes em `Varzea.Engine.Tests` (era 19 no fim da secção 10): equivalência
+passo-a-passo/lote pra `ContractChoices` (via `AdvanceCareerTests.FullRecipe`), mecânica
+de aceitar/recusar proposta (`ContractChoice_AcceptedProposal_ChangesTier...`), empréstimo
+(`RequestLoan_DropsTierForOneSeasonThenRestores`), fadiga sempre ativa
+(`Fatigue_AccumulatesEvenWithoutAnyRequest`), descanso/personal trainer/jogar lesionado, e
+promessa de título nas duas direções (moral sobe quando cumpre, desce quando quebra).
+Cada passo teve verificação end-to-end real (HTTP direto via `fetch()` e/ou clique real no
+navegador) além dos testes automatizados — os dois bugs reais desta rodada (SeasonRequests
+perdido em pausa-na-mesma-chamada, `SeasonResult` incompleto no fim abrupto de carreira)
+só apareceram nesse nível, não nos testes unitários "óbvios" escritos primeiro.
+
+### O que ainda falta (mesmo texto da secção 9, ainda válido)
+Modo jogo-a-jogo com tudo isto, login/Postgres pra persistência real — ambos
+deliberadamente pós-lançamento (secção 9).

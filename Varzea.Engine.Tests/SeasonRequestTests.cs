@@ -395,4 +395,48 @@ public class SeasonRequestTests
         }
         Assert.Contains(result.Timeline, s => s.RequestMade == SeasonRequestKind.RequestPlayInjured && s.RequestGranted);
     }
+
+    // --- Promessa de título (painel Clube, roadmap pós-§9) ---
+
+    // Pede em toda temporada — precisa de várias tentativas pra pegar tanto uma
+    // temporada em que virou campeão quanto uma em que não virou, na mesma carreira.
+    private static readonly SeasonRequestKind[] AlwaysPromiseTitle =
+        Enumerable.Repeat(SeasonRequestKind.RequestPromiseTitle, 25).ToArray();
+
+    [Fact]
+    public void RequestPromiseTitle_FulfilledOnlyWhenLeagueIsWon_AndMovesMoralInBothDirections()
+    {
+        var sim = new CareerSimulator(Rules);
+        var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPromiseTitle };
+
+        var result = sim.SimulateCareer(recipe);
+
+        var promised = result.Timeline.Where(s => s.PromisedTitle).ToList();
+        Assert.NotEmpty(promised);
+        Assert.All(promised, s => Assert.True(s.RequestGranted, "a declaração em si é sempre aceita — o que varia é PromiseFulfilled"));
+
+        // PromiseFulfilled é exatamente "foi campeão da liga nesta temporada" — nunca
+        // diverge do que season.LeaguePosition já diz (via o título de liga concedido).
+        foreach (var s in promised)
+            Assert.Equal(s.LeaguePosition == 1, s.PromiseFulfilled);
+
+        // Precisa de exemplos dos dois desfechos pra provar que a moral realmente
+        // reage nas DUAS direções (cumprida sobe, quebrada desce), não só uma.
+        var fulfilledIdx = result.Timeline.FindIndex(s => s.PromisedTitle && s.PromiseFulfilled);
+        var brokenIdx = result.Timeline.FindIndex(s => s.PromisedTitle && !s.PromiseFulfilled);
+        Assert.True(fulfilledIdx >= 0, "nesta seed, pedindo toda temporada, deveria ser campeão pelo menos uma vez");
+        Assert.True(brokenIdx >= 0, "nesta seed, pedindo toda temporada, deveria falhar pelo menos uma vez também");
+
+        double moraleBeforeFulfilled = fulfilledIdx > 0
+            ? (result.Timeline[fulfilledIdx - 1].TeamMorale + result.Timeline[fulfilledIdx - 1].CrowdMorale) / 2.0
+            : 0.0;
+        double moraleAfterFulfilled = (result.Timeline[fulfilledIdx].TeamMorale + result.Timeline[fulfilledIdx].CrowdMorale) / 2.0;
+        Assert.True(moraleAfterFulfilled > moraleBeforeFulfilled, "cumprir a promessa deveria subir a moral média (equipe+torcida)");
+
+        double moraleBeforeBroken = brokenIdx > 0
+            ? (result.Timeline[brokenIdx - 1].TeamMorale + result.Timeline[brokenIdx - 1].CrowdMorale) / 2.0
+            : 0.0;
+        double moraleAfterBroken = (result.Timeline[brokenIdx].TeamMorale + result.Timeline[brokenIdx].CrowdMorale) / 2.0;
+        Assert.True(moraleAfterBroken < moraleBeforeBroken, "quebrar a promessa deveria descer a moral média (equipe+torcida)");
+    }
 }

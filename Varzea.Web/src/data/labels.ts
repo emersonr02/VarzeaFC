@@ -65,6 +65,7 @@ export const SEASON_REQUEST_BUTTON_LABEL: Record<Exclude<SeasonRequestKind, "Non
   RequestRest: "Pedir descanso",
   RequestPlayInjured: "Jogar mesmo se lesionar",
   RequestPersonalTrainer: "Contratar personal trainer",
+  RequestPromiseTitle: "Prometer título",
 };
 
 export const INJURY_LABEL: Record<InjurySeverity, string | null> = {
