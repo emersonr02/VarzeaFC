@@ -52,7 +52,8 @@ public static class RarityCalibrator
             w.Weight[k.ToString()] = Compress(freq);
         }
 
-        // normaliza para a liga menor (o título mais comum) valer 10 pontos
+        // normaliza para a liga menor valer 10 pontos — só uma referência de escala,
+        // não implica mais que ela seja "o título mais comum" (não é, ver clamp abaixo).
         double baseW = w.Weight[TitleKind.LeagueMinor.ToString()];
         if (baseW > 0)
         {
@@ -60,6 +61,20 @@ public static class RarityCalibrator
             foreach (var key in w.Weight.Keys.ToList())
                 w.Weight[key] = Math.Round(w.Weight[key] * scale, 2);
         }
+
+        // Raridade pura (log(1/frequência)) quebra quando o GATE de um título é mais
+        // estreito que o do título "pai" que ele imita — o título fica raro por causa
+        // do gate (poucos jogadores nem competem), não porque seja mais difícil de
+        // ganhar uma vez lá dentro. Rei da América só existe pra ligas sul-americanas
+        // (universo pequeno) e saía mais valioso que Bola de Ouro; Liga Menor tornava-se
+        // mais valiosa que Liga Top-5 pelo mesmo motivo. Trava aqui uma hierarquia de
+        // prestígio conhecida (não derivada): cada item nunca pode valer mais que o seu
+        // "pai" na cadeia. Ordem importa — de cima pra baixo, pra propagar o teto.
+        ClampAtMost(w, TitleKind.LeagueMid, TitleKind.LeagueTop5);
+        ClampAtMost(w, TitleKind.LeagueMinor, TitleKind.LeagueMid);
+        ClampAtMost(w, TitleKind.ContinentalSecondary, TitleKind.ContinentalPrimary);
+        ClampAtMost(w, TitleKind.KingOfAmerica, TitleKind.BallonDOr);
+        ClampAtMost(w, TitleKind.SouthAmericanTeamOfTheYear, TitleKind.TeamOfTheYear);
 
         // percentis de produção POR POSIÇÃO — senão zagueiro nunca ranqueia
         foreach (var grp in sample.GroupBy(c => c.Position))
@@ -70,6 +85,16 @@ public static class RarityCalibrator
             w.ProductionP95[grp.Key.ToString()] = Percentile(vals, 0.95);
         }
         return w;
+    }
+
+    /// <summary>Garante que o peso de <paramref name="child"/> nunca supere o de
+    /// <paramref name="parent"/> — usado pra corrigir a inversão de hierarquia que a
+    /// raridade pura produz entre título e seu análogo/subordinado.</summary>
+    private static void ClampAtMost(RarityWeights w, TitleKind child, TitleKind parent)
+    {
+        string c = child.ToString(), p = parent.ToString();
+        if (w.Weight.TryGetValue(c, out var cv) && w.Weight.TryGetValue(p, out var pv) && cv > pv)
+            w.Weight[c] = pv;
     }
 
     private static double Percentile(List<double> sorted, double p)

@@ -345,13 +345,6 @@ function moraleIcon(v: number): string {
   return "😠";
 }
 
-// Fadiga (painel Saúde, roadmap pós-§9): ícone por faixa, 0..~1.2 (FatigueMax no motor).
-function fatigueIcon(v: number): string {
-  if (v < 0.25) return "🟢";
-  if (v < 0.6) return "🟡";
-  return "🔴";
-}
-
 function moraleNote(season: SeasonResult): string | null {
   if (season.askedToLeave) return "😤 O clima no vestiário azedou — você deixou claro que quer sair.";
   if (season.declinedBiggerClub) return "❤️ Recusou uma proposta de fora e a torcida vibrou com a lealdade.";
@@ -505,80 +498,118 @@ function ContractChoiceClip({ choice, clubFor, isAwaiting, resolvedChoiceIndex, 
   );
 }
 
-// Painel Contrato + Técnico (roadmap pós-§9). Mostra o estado atual (temporadas
-// restantes de contrato, relação com o técnico) e deixa o jogador selecionar UM pedido
-// pra próxima temporada — enviado junto do próximo clique real em "Avançar" (ver
-// canRequest/handleAdvance). Braçadeira e bolas paradas somem depois de concedidas
-// (ficam pra sempre, não tem por que pedir de novo).
+type PanelKind = "contrato" | "tecnico" | "empresario" | "clube";
+
+// Quais pedidos pertencem a cada categoria — usado só pra marcar o botão da categoria
+// com "✓" quando há um pedido pendente escondido ali dentro (painel fechado).
+const PANEL_REQUESTS: Record<PanelKind, SeasonRequestKind[]> = {
+  contrato: ["RequestRenewal", "RequestLeaveAtContractEnd", "RequestLeaveNow", "RequestRaise"],
+  tecnico: ["RequestCaptaincy", "RequestSetPieces"],
+  empresario: ["RequestLoan"],
+  clube: ["RequestPromiseTitle"],
+};
+
+// Painel Contrato + Técnico + Empresário + Clube (roadmap pós-§9). Cada categoria é um
+// botão que abre/fecha seu conteúdo (não tudo exposto de uma vez) — dentro, o estado
+// atual e UM pedido selecionável pra próxima temporada, enviado junto do próximo clique
+// real em "Avançar" (ver canRequest/handleAdvance). Braçadeira e bolas paradas somem
+// depois de concedidas (ficam pra sempre, não tem por que pedir de novo). Saúde/fadiga
+// não aparece aqui — no modo temporada-a-temporada só lesão é visível pro jogador (a
+// fadiga continua existindo no motor, só não é exposta na UI).
 function ManagementPanel({ lastSeason, pendingRequest, canRequest, onSelect }: {
   lastSeason: SeasonResult;
   pendingRequest: Exclude<SeasonRequestKind, "None"> | null;
   canRequest: boolean;
   onSelect: (kind: Exclude<SeasonRequestKind, "None">) => void;
 }) {
+  const [openPanel, setOpenPanel] = useState<PanelKind | null>(null);
+  const toggle = (p: PanelKind) => setOpenPanel((cur) => (cur === p ? null : p));
+  const hasPendingIn = (p: PanelKind) => pendingRequest !== null && PANEL_REQUESTS[p].includes(pendingRequest);
+
   return (
-    <div className="dash-bar" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: -6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div className="dash-k">Contrato</div>
-          <div className="dash-v" style={{ fontSize: 14 }}>
-            {lastSeason.contractYearsRemaining} temporada{lastSeason.contractYearsRemaining === 1 ? "" : "s"} restante{lastSeason.contractYearsRemaining === 1 ? "" : "s"}
+    <div className="dash-bar" style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: -6 }}>
+      <div style={{ display: "flex", flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+        <PanelToggleButton label="📄 Contrato" active={openPanel === "contrato"} pending={hasPendingIn("contrato")} onClick={() => toggle("contrato")} />
+        <PanelToggleButton label="🎯 Técnico" active={openPanel === "tecnico"} pending={hasPendingIn("tecnico")} onClick={() => toggle("tecnico")} />
+        <PanelToggleButton label="💼 Empresário" active={openPanel === "empresario"} pending={hasPendingIn("empresario")} onClick={() => toggle("empresario")} />
+        <PanelToggleButton label="🏟 Clube" active={openPanel === "clube"} pending={hasPendingIn("clube")} onClick={() => toggle("clube")} />
+      </div>
+
+      {openPanel === "contrato" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <div className="dash-k">Contrato</div>
+            <div className="dash-v" style={{ fontSize: 14 }}>
+              {lastSeason.contractYearsRemaining} temporada{lastSeason.contractYearsRemaining === 1 ? "" : "s"} restante{lastSeason.contractYearsRemaining === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <RequestButton kind="RequestRenewal" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+            <RequestButton kind="RequestLeaveAtContractEnd" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+            <RequestButton kind="RequestLeaveNow" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+            <RequestButton kind="RequestRaise" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <RequestButton kind="RequestRenewal" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-          <RequestButton kind="RequestLeaveAtContractEnd" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-          <RequestButton kind="RequestLeaveNow" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-          <RequestButton kind="RequestRaise" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-        </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div className="dash-k">Técnico</div>
-          <div className="dash-v" style={{ fontSize: 14 }}>{moraleIcon(lastSeason.coachMorale)} Relação</div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <RequestButton kind="RequestCaptaincy" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.isCaptain} onSelect={onSelect} />
-          <RequestButton kind="RequestSetPieces" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasSetPieces} onSelect={onSelect} />
-        </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div className="dash-k">Empresário</div>
-          <div className="dash-v" style={{ fontSize: 14 }}>{lastSeason.onLoan ? "🔄 Emprestado" : "Sem empréstimo"}</div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <RequestButton kind="RequestLoan" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-        </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div className="dash-k">Saúde</div>
-          <div className="dash-v" style={{ fontSize: 14 }}>{fatigueIcon(lastSeason.fatigue)} Fadiga {Math.round(Math.min(1, lastSeason.fatigue) * 100)}%</div>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <RequestButton kind="RequestRest" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-          <RequestButton kind="RequestPlayInjured" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
-          <RequestButton kind="RequestPersonalTrainer" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasPersonalTrainer} onSelect={onSelect} />
-        </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div className="dash-k">Clube</div>
-          <div className="dash-v" style={{ fontSize: 14 }}>
-            {lastSeason.promisedTitle ? (lastSeason.promiseFulfilled ? "🏆 Promessa cumprida" : "😬 Promessa quebrada") : "Sem promessa"}
+      )}
+
+      {openPanel === "tecnico" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <div className="dash-k">Técnico</div>
+            <div className="dash-v" style={{ fontSize: 14 }}>{moraleIcon(lastSeason.coachMorale)} Relação</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <RequestButton kind="RequestCaptaincy" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.isCaptain} onSelect={onSelect} />
+            <RequestButton kind="RequestSetPieces" pendingRequest={pendingRequest} disabled={!canRequest} granted={lastSeason.hasSetPieces} onSelect={onSelect} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <RequestButton kind="RequestPromiseTitle" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+      )}
+
+      {openPanel === "empresario" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <div className="dash-k">Empresário</div>
+            <div className="dash-v" style={{ fontSize: 14 }}>{lastSeason.onLoan ? "🔄 Emprestado" : "Sem empréstimo"}</div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <RequestButton kind="RequestLoan" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          </div>
         </div>
-      </div>
+      )}
+
+      {openPanel === "clube" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div>
+            <div className="dash-k">Clube</div>
+            <div className="dash-v" style={{ fontSize: 14 }}>
+              {lastSeason.promisedTitle ? (lastSeason.promiseFulfilled ? "🏆 Promessa cumprida" : "😬 Promessa quebrada") : "Sem promessa"}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <RequestButton kind="RequestPromiseTitle" pendingRequest={pendingRequest} disabled={!canRequest} onSelect={onSelect} />
+          </div>
+        </div>
+      )}
+
       {pendingRequest && (
         <div className="body" style={{ fontSize: 12, fontStyle: "italic" }}>
           Pedido selecionado pra próxima temporada: {SEASON_REQUEST_BUTTON_LABEL[pendingRequest]} — clique em "Avançar" pra enviar.
         </div>
       )}
     </div>
+  );
+}
+
+function PanelToggleButton({ label, active, pending, onClick }: {
+  label: string;
+  active: boolean;
+  pending: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={`btn-mini ${active ? "accept" : "decline"}`} onClick={onClick}>
+      {label}{pending ? " ✓" : ""}
+    </button>
   );
 }
 

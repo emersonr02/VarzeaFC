@@ -16,16 +16,16 @@
   },
   "Weight": {
     "LeagueTop5": 3.54,
-    "LeagueMid": 4.44,
-    "LeagueMinor": 10,
+    "LeagueMid": 3.54,
+    "LeagueMinor": 3.54,
     "DomesticCup": 1.82,
-    "ContinentalSecondary": 6.29,
+    "ContinentalSecondary": 4.7,
     "ContinentalPrimary": 4.7,
     "WorldCup": 9.84,
     "BallonDOr": 14.21,
     "TeamOfTheYear": 6.07,
-    "SouthAmericanTeamOfTheYear": 9.25,
-    "KingOfAmerica": 18.01
+    "SouthAmericanTeamOfTheYear": 6.07,
+    "KingOfAmerica": 14.21
   },
   "ProductionP50": {
     "SS": 106.3876805799715,
