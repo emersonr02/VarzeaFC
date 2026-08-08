@@ -398,14 +398,54 @@ function requestNote(season: SeasonResult): string | null {
   }
 }
 
-// Tabela real (Roadmap pós-§9, painel Clube): top 5 + a linha do jogador se ele estiver
-// fora do top 5 (com "…" separando), pra não estourar o espaço do recorte.
+// Tabela real (Roadmap pós-§9, painel Clube) — completa, não só top 5 + linha do
+// jogador (pedido explícito: "mostra a tabela completa"). PROMOTION_SPOTS/
+// RELEGATION_SPOTS espelham as constantes do motor (CareerSimulator.PromotionSpots/
+// RelegationSpots) só pra desenhar as zonas de acesso/rebaixamento — cosmético, o
+// motor já decidiu de verdade quem sobe/desce.
+const PROMOTION_SPOTS = 2;
+const RELEGATION_SPOTS = 4;
+
 function leagueTableRowsToShow(season: SeasonResult): { rank: number; clubName: string; points: number; isPlayerClub: boolean }[] {
-  const ranked = season.leagueTable.map((r, i) => ({ rank: i + 1, ...r }));
-  const top5 = ranked.slice(0, 5);
-  const ownIdx = ranked.findIndex((r) => r.isPlayerClub);
-  if (ownIdx >= 0 && ownIdx >= 5) return [...top5, ranked[ownIdx]];
-  return top5;
+  return season.leagueTable.map((r, i) => ({ rank: i + 1, ...r }));
+}
+
+// Notícia de fim de temporada estilo "pushup" (pedido explícito, referência visual de
+// outro app): manchete curta com ícone + cor, no topo do resumo de cada temporada —
+// prioriza o evento mais importante (título raro > título de liga > acesso >
+// rebaixamento), como uma notificação de última hora de verdade.
+const TITLE_PRIORITY: TitleKind[] = [
+  "BallonDOr", "KingOfAmerica", "WorldCup", "TeamOfTheYear", "SouthAmericanTeamOfTheYear",
+  "ContinentalPrimary", "ContinentalSecondary", "LeagueTop5", "LeagueMid", "LeagueMinor", "DomesticCup",
+];
+
+function seasonNewsFlash(season: SeasonResult): { icon: string; color: string; headline: string } {
+  const bestTitle = TITLE_PRIORITY.find((t) => season.titles.includes(t));
+  if (bestTitle) return { icon: "🏆", color: "var(--gold)", headline: `${TITLE_LABEL[bestTitle].toUpperCase()}!` };
+  if (season.promoted) return { icon: "⬆️", color: "#27ae60", headline: "ACESSO! O CLUBE SUBIU DE DIVISÃO" };
+  if (season.relegated) return { icon: "⬇️", color: "#c0392b", headline: "REBAIXAMENTO" };
+  return { icon: "📋", color: "var(--blue)", headline: "TEMPORADA ENCERRADA" };
+}
+
+function SeasonNewsFlash({ season }: { season: SeasonResult }) {
+  const { icon, color, headline } = seasonNewsFlash(season);
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, marginBottom: 8,
+      padding: "8px 10px", borderRadius: 6, background: "rgba(0,0,0,0.25)", border: `1px solid ${color}`,
+    }}>
+      <div style={{
+        width: 30, height: 30, minWidth: 30, borderRadius: 6, background: color,
+        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+      }}>{icon}</div>
+      <div>
+        <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", opacity: 0.65, fontWeight: 700 }}>
+          Última hora · {season.age} anos
+        </div>
+        <div style={{ fontFamily: "var(--font-d)", fontSize: 15, fontWeight: 700, lineHeight: 1.1 }}>{headline}</div>
+      </div>
+    </div>
+  );
 }
 
 function SeasonClip({ season, country }: { season: SeasonResult; country: string }) {
@@ -424,6 +464,7 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
   const reqNote = requestNote(season);
   return (
     <div className="clip">
+      <SeasonNewsFlash season={season} />
       <div className="season-tag">Resumo · {season.age} anos · Overall {season.overall} · {club}</div>
       <div className="headline">{champion ? "Campeão" : "Temporada"} no {club}</div>
       <div className="body">
@@ -441,19 +482,32 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
       </div>
       {tableRows.length > 0 && (
         <div className="body" style={{ marginTop: 6, fontSize: 11 }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela · {leagueName}</div>
-          {tableRows.map((r, i) => (
-            <div key={r.clubName}>
-              {i > 0 && r.rank > tableRows[i - 1].rank + 1 && <div style={{ opacity: 0.5 }}>···</div>}
-              <div style={{
-                display: "flex", justifyContent: "space-between",
-                fontWeight: r.isPlayerClub ? 700 : 400,
-                color: r.isPlayerClub ? "var(--blue)" : undefined,
-              }}>
-                <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
-              </div>
-            </div>
-          ))}
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela completa · {leagueName}</div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {tableRows.map((r) => {
+              const relegationCut = tableRows.length - RELEGATION_SPOTS;
+              const inPromotionZone = r.rank <= PROMOTION_SPOTS;
+              const inRelegationZone = r.rank > relegationCut;
+              return (
+                <div key={r.clubName}>
+                  {r.rank === relegationCut + 1 && (
+                    <div style={{ borderTop: "1px dashed #c0392b", color: "#c0392b", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", padding: "3px 0 2px", fontWeight: 700 }}>
+                      Zona de rebaixamento
+                    </div>
+                  )}
+                  <div style={{
+                    display: "flex", justifyContent: "space-between",
+                    borderLeft: `3px solid ${inPromotionZone ? "#27ae60" : inRelegationZone ? "#c0392b" : "transparent"}`,
+                    paddingLeft: 4,
+                    fontWeight: r.isPlayerClub ? 700 : 400,
+                    color: r.isPlayerClub ? "var(--blue)" : undefined,
+                  }}>
+                    <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}

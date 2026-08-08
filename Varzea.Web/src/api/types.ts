@@ -114,6 +114,11 @@ export interface SeasonResult {
   // quando esta temporada carrega a ressaca de uma lesão Severe da ANTERIOR — não a
   // lesão desta temporada em si (ver injury pra isso).
   recoveringFromInjury: boolean;
+  // Acesso/rebaixamento (roadmap pós-§9): true na temporada que TERMINOU dentro da
+  // zona — o clube/tier só muda de fato na temporada seguinte (mesmo delay de 1
+  // temporada de qualquer outra mudança de clube).
+  promoted: boolean;
+  relegated: boolean;
 }
 
 export interface ClubOptionsResponse {
