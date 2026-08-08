@@ -183,16 +183,16 @@ public class SeasonRequestTests
         // cheio de baseRecipe direto faria a oferta resolver na hora em vez de pausar.
         var baseRecipe = BaseRecipe(1) with { TransferChoices = Array.Empty<bool>() };
 
-        // Chamada 1: espelha POST /careers/advance {decision:null, request:"RequestLeaveNow"}
-        var call1Requests = new[] { SeasonRequestKind.RequestLeaveNow };
+        // "Nova regra" (roadmap pós-§9): nenhuma proposta chega antes dos 18 anos, então
+        // RequestLeaveNow não pode mais forçar pausa já na primeira temporada (idade
+        // inicial 16) — repete o pedido em toda temporada (mesmo padrão de
+        // AlwaysSetPieces/AlwaysCaptaincy abaixo) até a idade mínima liberar o gatilho.
+        var call1Requests = Enumerable.Repeat(SeasonRequestKind.RequestLeaveNow, 25).ToArray();
         var progress1 = sim.AdvanceCareer(baseRecipe with { SeasonRequests = call1Requests });
-        Assert.True(progress1.AwaitingDecision, "RequestLeaveNow deveria forçar uma oferta garantida na primeira temporada");
+        Assert.True(progress1.AwaitingDecision, "RequestLeaveNow deveria forçar uma oferta garantida a partir dos 18 anos");
 
         int consumedSlots = progress1.Result.Timeline.Count + (progress1.AwaitingDecision ? 1 : 0);
-        var afterCall1 = call1Requests.Length < consumedSlots
-            ? call1Requests.Concat(Enumerable.Repeat(SeasonRequestKind.None, consumedSlots - call1Requests.Length)).ToArray()
-            : call1Requests;
-        Assert.Equal(SeasonRequestKind.RequestLeaveNow, Assert.Single(afterCall1));
+        var afterCall1 = call1Requests.Take(consumedSlots).ToArray();
 
         // Roadmap pós-§9, "propostas de mais clubes": a busca garantida de RequestLeaveNow
         // agora também passa pelo caminho de múltiplas propostas (mesmo mecanismo da
@@ -203,9 +203,11 @@ public class SeasonRequestTests
         // Chamada 2: espelha POST /careers/advance {contractChoiceIndex:0} — aceita a
         // primeira proposta. SeasonRequests não muda.
         var progress2 = sim.AdvanceCareer(baseRecipe with { ContractChoices = new[] { 0 }, SeasonRequests = afterCall1 });
-        var firstSeason = progress2.Result.Timeline[0];
-        Assert.Equal(SeasonRequestKind.RequestLeaveNow, firstSeason.RequestMade);
-        Assert.True(firstSeason.RequestGranted);
+        var pausedSeasonIndex = progress1.Result.Timeline.Count;
+        var pausedSeason = progress2.Result.Timeline[pausedSeasonIndex];
+        Assert.Equal(SeasonRequestKind.RequestLeaveNow, pausedSeason.RequestMade);
+        Assert.True(pausedSeason.RequestGranted);
+        Assert.True(pausedSeason.Age >= 18, "gatilho de RequestLeaveNow não deveria disparar antes dos 18 anos");
     }
 
     // Pede em toda temporada (não só na primeira) pra não depender de uma única rolagem

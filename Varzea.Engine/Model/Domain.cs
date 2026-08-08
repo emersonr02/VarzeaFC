@@ -235,8 +235,11 @@ public sealed record PendingTransferOffer(
 
 /// <summary>Uma proposta concreta entre as N que aparecem quando o contrato vence sem
 /// renovação (Roadmap §9 Bloco 3, corte de escopo fechado — "1+ propostas"). ClubTier é
-/// absoluto (não relativo ao tier atual, ao contrário de PendingTransferOffer.Upgrade).</summary>
-public sealed record ContractProposalOption(int ClubTier, bool Upgrade);
+/// absoluto (não relativo ao tier atual, ao contrário de PendingTransferOffer.Upgrade).
+/// ClubName é o clube REAL já sorteado no momento em que a proposta é gerada — o mesmo
+/// nome mostrado ao jogador é o que é aplicado se ele aceitar (nunca um re-sorteio
+/// silencioso na hora de aceitar, que já causou bug de "aceitei X e fui parar em Y").</summary>
+public sealed record ContractProposalOption(int ClubTier, bool Upgrade, string ClubName);
 
 /// <summary>
 /// 1-3 propostas simultâneas — na não-renovação de contrato (natural ou via
@@ -261,4 +264,9 @@ public sealed class CareerProgress
     public PendingTransferOffer? PendingOffer { get; init; }
     public PendingContractChoice? PendingContractChoice { get; init; }
     public bool AwaitingDecision => PendingOffer is not null || PendingContractChoice is not null;
+
+    /// <summary>True quando a pausa foi só pelo limite de revelação de AdvanceCareer
+    /// (uma temporada por chamada) — a carreira NÃO acabou, só não há decisão
+    /// pendente nenhuma. Distinto de AwaitingDecision pro Finished da API não mentir.</summary>
+    public bool ReachedRevealLimit { get; init; }
 }

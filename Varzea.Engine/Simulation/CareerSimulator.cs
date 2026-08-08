@@ -136,16 +136,27 @@ public sealed class CareerSimulator
 
     /// <summary>Roda a carreira inteira. Exige TransferChoices já completo — usado pelo
     /// Monte Carlo e por /careers/save (que já recebe a receita fechada).</summary>
-    public CareerResult SimulateCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: false).Result;
+    public CareerResult SimulateCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: false, revealLimit: null).Result;
 
     /// <summary>
-    /// Roda a carreira até a próxima oferta de transferência sem decisão em
-    /// recipe.TransferChoices, ou até o fim. Não precisa serializar RNG entre chamadas:
-    /// como a carreira inteira custa microssegundos, cada chamada re-simula do zero com
-    /// a receita um pouco mais completa (uma decisão a mais) — determinístico por
-    /// construção, e mantém a API sem sessão de servidor (ver Varzea.Api.CareerState).
+    /// Roda a carreira até a próxima oferta/proposta pendente sem decisão, até
+    /// <paramref name="revealLimit"/> temporadas reveladas (null = sem limite, roda até
+    /// o fim ou a próxima pausa), ou até o fim. Não precisa serializar RNG entre
+    /// chamadas: como a carreira inteira custa microssegundos, cada chamada re-simula do
+    /// zero com a receita um pouco mais completa (uma decisão a mais) — determinístico
+    /// por construção, e mantém a API sem sessão de servidor (ver Varzea.Api.CareerState).
+    ///
+    /// revealLimit existe porque, sem ele, uma carreira sem NENHUMA pausa (raro no início,
+    /// quando ofertas/propostas ainda não dispararam) roda inteira numa chamada só — bug
+    /// real encontrado: o jogador clicava "Avançar" uma vez e via 6+ temporadas de uma
+    /// vez, sem chance de usar os painéis Contrato/Técnico/Empresário/Clube no meio
+    /// ("nenhum botão faz nada" era, na prática, "só dava pra pedir uma vez a cada 6
+    /// temporadas"). O padrão normal (uma chamada = uma temporada nova) usa revealLimit;
+    /// "pular tudo" no front passa null pra manter o atalho de ir até o fim/próxima pausa
+    /// numa única viagem de rede.
     /// </summary>
-    public CareerProgress AdvanceCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: true);
+    public CareerProgress AdvanceCareer(CareerRecipe recipe, int? revealLimit = null) =>
+        RunCareer(recipe, interactive: true, revealLimit);
 
     /// <summary>
     /// As 3 opções de clube real (Roadmap pós-§9, painel Clube) pro país/posição/draft
@@ -181,7 +192,7 @@ public sealed class CareerSimulator
         return chosen;
     }
 
-    private CareerProgress RunCareer(CareerRecipe recipe, bool interactive)
+    private CareerProgress RunCareer(CareerRecipe recipe, bool interactive, int? revealLimit)
     {
         var attrs = ResolveDraft(recipe.Seed, recipe.DraftPicks);
         var pos = recipe.Position;
@@ -271,6 +282,19 @@ public sealed class CareerSimulator
 
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
+            // Uma chamada = uma temporada nova (ver AdvanceCareer) — pausa ANTES de
+            // simular a próxima, mesmo padrão de "temporada não entra no Timeline até
+            // fechar" das outras pausas, mas sem consumir nenhum request/decisão desta
+            // temporada (ela nem começou). ReachedRevealLimit distingue isto de "carreira
+            // realmente acabou" pro Finished da API.
+            if (interactive && revealLimit is { } limit && result.Timeline.Count >= limit)
+            {
+                return new CareerProgress
+                {
+                    Result = Finalize(result, peak, seasons, goals, assists, tackles, cs, caps),
+                    ReachedRevealLimit = true
+                };
+            }
             if (parentTier >= 0)
             {
                 tier = parentTier;
@@ -287,6 +311,13 @@ public sealed class CareerSimulator
             else
                 overall -= rng.NextInt(1, 4);
 
+            // Potencial é um TETO real, nunca um alvo aproximado — bug real encontrado:
+            // Math.Max(1, ...) acima força crescimento mínimo de +1 mesmo já em cima do
+            // potencial, e a fase de platô (+1/0/-1 aleatório) não tinha teto nenhum,
+            // deixando overall passar do potencial sorteado (relatado: "potencial era
+            // 89, cheguei aos 96"). Math.Min aqui garante que isso nunca mais aconteça,
+            // em qualquer fase da curva.
+            overall = Math.Min(overall, potential);
             overall = Math.Clamp(overall, 35, 99);
             peak = Math.Max(peak, overall);
 
@@ -689,14 +720,29 @@ public sealed class CareerSimulator
             // PendingTransferOffer (offer/upgrade acima) continua só pra fora do ciclo.
             List<ContractProposalOption>? contractProposals = null;
 
-            if (contractExpiring)
+            // "Nova regra": antes dos 18, o jogador está preso ao clube de base — nenhuma
+            // proposta chega, dentro ou fora do ciclo de contrato (bug/pedido real:
+            // "não posso sair do meu clube até os 18 anos, recebi proposta antes da
+            // primeira temporada"). Contrato que vence antes disso renova sozinho, sem
+            // rolagem nenhuma — é cedo demais pra qualquer clube arriscar perder um
+            // garoto de base pra concorrência.
+            if (age < 18)
+            {
+                if (contractExpiring)
+                {
+                    contractRenewed = true;
+                    contractYear = 0;
+                    contractDuration = NextContractDuration(age, peakAge, retireAge, rng);
+                }
+            }
+            else if (contractExpiring)
             {
                 if (wantsToLeaveAtContractEnd)
                 {
                     // Jogador já avisou (painel Contrato, roadmap pós-§9) que quer sair
                     // quando o contrato vencesse — pula a rolagem de renovação e vai
                     // direto pro caminho de "não renovou".
-                    contractProposals = GenerateContractProposals(tier, overall, target, rng);
+                    contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng);
                     wantsToLeaveAtContractEnd = false;
                 }
                 else
@@ -712,7 +758,7 @@ public sealed class CareerSimulator
                     }
                     else
                     {
-                        contractProposals = GenerateContractProposals(tier, overall, target, rng);
+                        contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng);
                     }
                 }
             }
@@ -743,7 +789,7 @@ public sealed class CareerSimulator
                 else if (perf > 14 && tier < 5 && rng.Chance(0.45)) { triggered = true; direction = true; }
                 else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30)) { triggered = true; direction = false; }
                 else if (tier < 5 && rng.Chance(scoutingChance)) { triggered = true; direction = true; }
-                if (triggered) contractProposals = GenerateContractProposals(tier, overall, target, rng, direction);
+                if (triggered) contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng, direction);
             }
 
             bool accepted = false;
@@ -767,7 +813,11 @@ public sealed class CareerSimulator
                     accepted = true;
                     upgrade = contractProposals[choice].Upgrade;
                     tier = Math.Clamp(contractProposals[choice].ClubTier, 1, 5);
-                    clubName = _clubs.PickClub(recipe.Country, tier, rng);
+                    // O clube é o MESMO já sorteado quando a proposta foi gerada (ver
+                    // GenerateContractProposals) — nunca um re-sorteio aqui, senão o
+                    // clube mostrado ao jogador na hora de escolher poderia divergir do
+                    // clube realmente aplicado (bug real encontrado e corrigido).
+                    clubName = contractProposals[choice].ClubName;
                 }
                 // choice inválido/-1: accepted fica false, tier não muda aqui — o bloco de
                 // reinício de contrato mais abaixo já trata "recusou todas" como o
@@ -948,20 +998,25 @@ public sealed class CareerSimulator
     /// ContinentalPrimary na primeira tentativa desta feature, ver HANDOFF). Null (a
     /// não-renovação de contrato, que não tem essa noção de "gatilho") mantém o cálculo
     /// original.</param>
-    private static List<ContractProposalOption> GenerateContractProposals(
-        int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null)
+    private List<ContractProposalOption> GenerateContractProposals(
+        string country, int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null)
     {
         var proposals = new List<ContractProposalOption>();
 
         bool qualifiesUpgrade = forceDirection ?? (overall >= target);
         int primaryTier = Math.Clamp(tier + (qualifiesUpgrade ? 1 : -1), 1, 5);
-        proposals.Add(new ContractProposalOption(primaryTier, qualifiesUpgrade));
+        // Clube sorteado AQUI, na geração — o mesmo nome mostrado na proposta é o que
+        // vira o clube real se aceita (ver aceite mais abaixo). Sem isto, o front tinha
+        // que inventar um nome cosmético pra mostrar (bug real encontrado: "aceitei
+        // proposta do Porto Imperial e fui parar no RB Leipzig" — nomes inventados sem
+        // nenhuma relação com o clube de verdade sorteado só na hora de aceitar).
+        proposals.Add(new ContractProposalOption(primaryTier, qualifiesUpgrade, _clubs.PickClub(country, primaryTier, rng)));
 
         // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) —
         // chance cresce com o overall, representando mais clubes de olho num jogador bom.
         double lateralChance = Math.Clamp((overall - 65) / 45.0, 0.15, 0.85);
         if (rng.Chance(lateralChance) && primaryTier != tier)
-            proposals.Add(new ContractProposalOption(tier, false));
+            proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng)));
 
         // Terceira proposta: "esticada" — só pra quem está muito bem, um clube ainda
         // maior que o da proposta principal.
@@ -969,7 +1024,7 @@ public sealed class CareerSimulator
         {
             int stretchTier = Math.Clamp(tier + 1, 1, 5);
             if (!proposals.Any(p => p.ClubTier == stretchTier))
-                proposals.Add(new ContractProposalOption(stretchTier, true));
+                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng)));
         }
 
         return proposals;
@@ -984,11 +1039,16 @@ public sealed class CareerSimulator
     /// <summary>
     /// Tabela de classificação real de pontos corridos (Roadmap pós-§9, painel Clube) —
     /// os clubes RIVAIS da mesma divisão do jogador jogam entre si E contra o jogador,
-    /// um turno único (cada par joga uma vez), pontos por vitória/empate/derrota
-    /// (3/1/0). A força do jogador (<paramref name="ownStrength"/>) já vem calculada
-    /// pelo chamador a partir do clube + perf da temporada; os rivais recebem a força
-    /// de base do próprio clube (ver ClubDirectory.BaseStrength) mais um ruído fixo
-    /// pra a tabela não ficar idêntica toda temporada.
+    /// turno E returno (cada par joga duas vezes, ida e volta — mesma estrutura de uma
+    /// liga de verdade com N clubes, 2×(N-1) jogos), pontos por vitória/empate/derrota
+    /// (3/1/0). Turno único (17 jogos, 51 pontos no máximo) dava campeão com totais
+    /// irreconhecíveis pra quem conhece futebol de verdade (bug real relatado: "campeão
+    /// com 34 pontos?????") — dobrar os jogos aproxima a escala de pontos da realidade
+    /// (34 jogos pra 18 clubes, como a Bundesliga de verdade) sem mudar a lógica de
+    /// quem é mais forte. A força do jogador (<paramref name="ownStrength"/>) já vem
+    /// calculada pelo chamador a partir do clube + perf da temporada; os rivais recebem
+    /// a força de base do próprio clube (ver ClubDirectory.BaseStrength) mais um ruído
+    /// fixo pra a tabela não ficar idêntica toda temporada.
     /// </summary>
     private (int Position, List<LeagueTableRow> Table) SimulateLeagueTable(
         string ownClub, double ownStrength, IReadOnlyList<string> rivals, string countryName, Pcg32 rng)
@@ -999,17 +1059,20 @@ public sealed class CareerSimulator
 
         var points = strength.Keys.ToDictionary(k => k, _ => 0);
         var names = strength.Keys.ToList();
-        for (int i = 0; i < names.Count; i++)
+        for (int round = 0; round < 2; round++)
         {
-            for (int j = i + 1; j < names.Count; j++)
+            for (int i = 0; i < names.Count; i++)
             {
-                double diff = strength[names[i]] - strength[names[j]];
-                double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
-                double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
-                double roll = rng.NextDouble();
-                if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; }
-                else if (roll < drawChance + (1 - drawChance) * pHome) points[names[i]] += 3;
-                else points[names[j]] += 3;
+                for (int j = i + 1; j < names.Count; j++)
+                {
+                    double diff = strength[names[i]] - strength[names[j]];
+                    double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
+                    double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
+                    double roll = rng.NextDouble();
+                    if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; }
+                    else if (roll < drawChance + (1 - drawChance) * pHome) points[names[i]] += 3;
+                    else points[names[j]] += 3;
+                }
             }
         }
 

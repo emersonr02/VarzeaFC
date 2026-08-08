@@ -6,6 +6,7 @@ import { dilemmaLine } from "../data/dilemmas";
 import {
   DOMESTIC_CUP_NAME,
   LEAGUE_NAME,
+  SECOND_DIVISION_NAME,
   buildClubName,
   buildFinalNarrative,
   continentalName,
@@ -80,9 +81,10 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     currentToken: string,
     decision?: boolean,
     request?: SeasonRequestKind,
-    contractChoiceIndex?: number
+    contractChoiceIndex?: number,
+    revealAll?: boolean
   ) {
-    const resp = await api.advance(currentToken, decision, request, contractChoiceIndex);
+    const resp = await api.advance(currentToken, decision, request, contractChoiceIndex, revealAll);
     const seasonClips = buildClipsForSeasons(resp.newSeasons);
     // Mutuamente exclusivos (CareerProgress.AwaitingDecision) — no máximo um dos dois
     // vem preenchido.
@@ -192,7 +194,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
         if (pendingQueue.length > 0 && pendingQueue[0].kind === "offer") {
           const offerClip = pendingQueue.shift()!;
           const accept = offerClip.kind === "offer" ? offerClip.offer.upgrade : false;
-          const more = await fetchMore(currentToken, accept);
+          const more = await fetchMore(currentToken, accept, undefined, undefined, true);
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
           pendingQueue = [...pendingQueue, ...more.clips];
@@ -203,7 +205,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           const proposals = choiceClip.kind === "contractChoice" ? choiceClip.choice.proposals : [];
           const upgradeIdx = proposals.findIndex((p) => p.upgrade);
           const chosen = upgradeIdx >= 0 ? upgradeIdx : -1;
-          const more = await fetchMore(currentToken, undefined, undefined, chosen);
+          const more = await fetchMore(currentToken, undefined, undefined, chosen, true);
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
           pendingQueue = [...pendingQueue, ...more.clips];
@@ -215,7 +217,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           }
           setDash(dashFrom(clip));
         } else {
-          const more = await fetchMore(currentToken);
+          const more = await fetchMore(currentToken, undefined, undefined, undefined, true);
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
           pendingQueue = [...pendingQueue, ...more.clips];
@@ -410,7 +412,13 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
   const champion = season.leaguePosition === 1;
   const club = season.clubName;
   const tableRows = leagueTableRowsToShow(season);
-  const leagueName = LEAGUE_NAME[country] ?? "Liga Nacional";
+  // ClubDirectory.LeagueRivals: tier>=3 é a 1ª divisão, tier<3 é a 2ª — mesmo corte
+  // usado no motor (ver ClubDirectory.cs). Sem isto, a 2ª divisão aparecia com o nome
+  // da 1ª (bug real: "SpVgg em 5º na Bundesliga" — era a 2. Bundesliga, simulada certa,
+  // só rotulada errado).
+  const leagueName = season.clubTier >= 3
+    ? (LEAGUE_NAME[country] ?? "Liga Nacional")
+    : (SECOND_DIVISION_NAME[country] ?? "Segunda Divisão");
   const injuryNote = INJURY_LABEL[season.injury];
   const note = moraleNote(season);
   const reqNote = requestNote(season);

@@ -165,7 +165,11 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
     var recipe = new CareerRecipe(
         state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion,
         seasonRequests, contractChoices, state.StartingClubChoice);
-    var progress = simulator.AdvanceCareer(recipe);
+    // Uma chamada normal revela no máximo UMA temporada nova (state.SeasonsRevealed + 1)
+    // — ver AdvanceCareer. RevealAll (só usado por "pular tudo" no front) desliga o
+    // limite pra buscar até a próxima pausa/fim numa viagem de rede só.
+    int? revealLimit = req.RevealAll == true ? null : state.SeasonsRevealed + 1;
+    var progress = simulator.AdvanceCareer(recipe, revealLimit);
 
     // Uma única chamada pode revelar VÁRIAS temporadas de uma vez quando não há pausa no
     // meio (fetchMore no front devolve tudo até a próxima pausa ou o fim) — então
@@ -186,7 +190,7 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
 
     return Results.Ok(new AdvanceResponse(
         tokens.Issue(next), newSeasons, progress.PendingOffer, progress.PendingContractChoice,
-        Finished: !progress.AwaitingDecision));
+        Finished: !progress.AwaitingDecision && !progress.ReachedRevealLimit));
 });
 
 app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>

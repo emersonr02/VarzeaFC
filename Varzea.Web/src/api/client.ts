@@ -47,12 +47,15 @@ export const api = {
   // (avançando pra temporada nova, não resolvendo uma pausa pendente) — ver
   // Varzea.Api.Program /careers/advance. contractChoiceIndex resolve PendingContractChoice
   // (Roadmap §9 Bloco 3, "múltiplas propostas"); -1 = recusar todas as propostas.
-  advance: (token: string, decision?: boolean, request?: SeasonRequestKind, contractChoiceIndex?: number) =>
+  // revealAll: true só em "pular tudo" (handleSkipAll) — desliga o limite de "uma
+  // temporada nova por chamada" que o servidor aplica por padrão (ver Program.cs).
+  advance: (token: string, decision?: boolean, request?: SeasonRequestKind, contractChoiceIndex?: number, revealAll?: boolean) =>
     send<AdvanceResponse>("/careers/advance", {
       token,
       decision: decision ?? null,
       request: request ?? null,
       contractChoiceIndex: contractChoiceIndex ?? null,
+      revealAll: revealAll ?? null,
     }),
 
   save: (token: string) => send<SaveResponse>("/careers/save", { token }),

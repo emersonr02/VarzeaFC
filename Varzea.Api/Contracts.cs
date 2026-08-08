@@ -41,8 +41,16 @@ public sealed record ClubChosenResponse(string Token, string ClubName);
 /// PendingOffer; ContractChoiceIndex resolve PendingContractChoice (Roadmap §9 Bloco 3,
 /// "múltiplas propostas") — nunca os dois preenchidos no mesmo POST, já que os dois
 /// tipos de pausa são mutuamente exclusivos (CareerProgress.AwaitingDecision).</summary>
+/// <summary>RevealAll (true): não limita a revelação a uma temporada por chamada — usado
+/// só por "pular tudo" no front, que já resolve toda pausa sozinho num laço e quer o
+/// menor número de viagens de rede possível. Omitido/false: uma chamada revela no máximo
+/// UMA temporada nova (ver CareerSimulator.AdvanceCareer, revealLimit) — bug real
+/// corrigido: sem este limite, uma carreira sem pausa no início podia revelar 6+
+/// temporadas numa chamada só, e o jogador só conseguia usar os painéis de pedido uma
+/// vez a cada tantas temporadas em vez de uma vez por temporada.</summary>
 public sealed record AdvanceRequest(
-    string Token, bool? Decision, SeasonRequestKind? Request = null, int? ContractChoiceIndex = null);
+    string Token, bool? Decision, SeasonRequestKind? Request = null, int? ContractChoiceIndex = null,
+    bool? RevealAll = null);
 
 public sealed record AdvanceResponse(
     string Token, IReadOnlyList<SeasonResult> NewSeasons, PendingTransferOffer? PendingOffer,

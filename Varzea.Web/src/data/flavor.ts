@@ -32,6 +32,15 @@ export const LEAGUE_NAME: Record<string, string> = {
   França: "Ligue 1", Espanha: "La Liga", Alemanha: "Bundesliga",
   Inglaterra: "Premier League", Itália: "Serie A", Holanda: "Eredivisie", Uruguai: "Liga Uruguaya",
 };
+// Bug real encontrado: a tabela real (Roadmap pós-§9) simula a divisão 2 corretamente
+// (clubTier 1-2) quando o jogador está lá, mas o front rotulava QUALQUER divisão com o
+// nome da 1ª divisão — parecia "SpVgg Greuther Fürth em 5º na Bundesliga sem Bayern",
+// quando na verdade era a 2. Bundesliga certinha, só com o nome errado.
+export const SECOND_DIVISION_NAME: Record<string, string> = {
+  Brasil: "Série B", Argentina: "Primera Nacional", Portugal: "Liga Portugal 2",
+  França: "Ligue 2", Espanha: "La Liga 2", Alemanha: "2. Bundesliga",
+  Inglaterra: "Championship", Itália: "Serie B", Holanda: "Eerste Divisie", Uruguai: "Segunda División",
+};
 export const DOMESTIC_CUP_NAME: Record<string, string> = {
   Brasil: "Copa do Brasil", Argentina: "Copa Argentina", Portugal: "Taça de Portugal",
   França: "Coupe de France", Espanha: "Copa del Rey", Alemanha: "DFB-Pokal",
