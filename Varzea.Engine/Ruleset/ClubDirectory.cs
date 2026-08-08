@@ -37,7 +37,16 @@ public sealed class ClubDirectory
     {
         var c = Countries.TryGetValue(country, out var cc) ? cc : Countries.Values.First();
         var division = tier >= 3 ? c.Divisao1 : c.Divisao2;
-        return division.Where(name => name != ownClub).ToList();
+        var rivals = division.Where(name => name != ownClub).ToList();
+        // Acesso/rebaixamento mantém a IDENTIDADE do clube (roadmap pós-§9) — um clube
+        // que subiu/desceu pode não estar na lista curada desta divisão (ex: um clube
+        // de 2ª divisão "promovido" continua não sendo um dos nomes de 1ª divisão
+        // catalogados). Sem o Where acima removendo nada, o clube do jogador virava um
+        // (N+1)-ésimo time extra — bug real relatado: "21º lugar num campeonato de 20".
+        // Derruba o último da lista pra manter o tamanho real da divisão sempre em N.
+        if (rivals.Count == division.Count && rivals.Count > 0)
+            rivals.RemoveAt(rivals.Count - 1);
+        return rivals;
     }
 
     /// <summary>Pool de clubes candidatos pro tier dado — tier 5 vem sempre de

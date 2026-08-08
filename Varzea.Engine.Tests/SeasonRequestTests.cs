@@ -401,13 +401,24 @@ public class SeasonRequestTests
     public void RequestPlayInjured_OnlyMattersWhenInjuryActuallyRolled()
     {
         var sim = new CareerSimulator(Rules, Clubs);
-        var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPlayInjured };
 
-        var result = sim.SimulateCareer(recipe);
+        // Precisa de uma seed cuja carreira role pelo menos uma lesão de verdade em 25
+        // temporadas — varre algumas em vez de fixar uma mágica, pra não ficar frágil a
+        // qualquer mudança futura no consumo de RNG (já aconteceu nesta sessão: um
+        // ajuste em ClubDirectory.LeagueRivals mudou quantos rng.NextDouble() a tabela
+        // consome por temporada, deslocando o que a seed 7 sorteava daqui pra frente).
+        CareerResult? result = null;
+        for (ulong seed = 1; seed <= 20 && result is null; seed++)
+        {
+            var candidate = sim.SimulateCareer(BaseRecipe(seed) with { SeasonRequests = AlwaysPlayInjured });
+            if (candidate.Timeline.Any(s => s.RequestMade == SeasonRequestKind.RequestPlayInjured && s.RequestGranted))
+                result = candidate;
+        }
+        Assert.NotNull(result);
 
         // Toda temporada com RequestGranted=true precisa ter uma lesão de verdade —
         // o pedido não faz nada numa temporada sem lesão (ver comentário no motor).
-        foreach (var season in result.Timeline.Where(s => s.RequestMade == SeasonRequestKind.RequestPlayInjured))
+        foreach (var season in result!.Timeline.Where(s => s.RequestMade == SeasonRequestKind.RequestPlayInjured))
         {
             if (season.RequestGranted)
                 Assert.NotEqual(InjurySeverity.None, season.Injury);
