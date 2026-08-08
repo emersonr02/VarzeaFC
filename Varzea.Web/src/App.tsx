@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, isDraftComplete } from "./api/client";
 import type { Attr, LegendOption, Pos, PositionPotential } from "./api/types";
 import { Album } from "./screens/Album";
+import { ClubSelect } from "./screens/ClubSelect";
 import { Draft } from "./screens/Draft";
 import { Home } from "./screens/Home";
 import { ModeSelect } from "./screens/ModeSelect";
@@ -11,7 +12,7 @@ import { Reveal } from "./screens/Reveal";
 import { Setup } from "./screens/Setup";
 import { Sim } from "./screens/Sim";
 
-type Screen = "home" | "setup" | "draft" | "position" | "reveal" | "mode" | "sim" | "result" | "album";
+type Screen = "home" | "setup" | "draft" | "position" | "reveal" | "clubs" | "mode" | "sim" | "result" | "album";
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -32,6 +33,7 @@ export default function App() {
   const [position, setPosition] = useState<Pos | null>(null);
   const [potential, setPotential] = useState(0);
   const [role, setRole] = useState("");
+  const [clubOptions, setClubOptions] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export default function App() {
     setPosition(null);
     setPotential(0);
     setRole("");
+    setClubOptions([]);
     setError(null);
   }
 
@@ -125,6 +128,37 @@ export default function App() {
     }
   }
 
+  async function goToClubs() {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await api.clubOptions(token);
+      setClubOptions(resp.options);
+      setToken(resp.token);
+      setScreen("clubs");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível buscar os clubes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function chooseClub(index: number) {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await api.chooseClub(token, index);
+      setToken(resp.token);
+      setScreen("mode");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível escolher o clube.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (metaError) {
     return (
       <div id="app">
@@ -190,8 +224,19 @@ export default function App() {
           potential={potential}
           role={role}
           attrs={attrs}
-          onContinue={() => setScreen("mode")}
+          onContinue={goToClubs}
           onRestart={goSetup}
+        />
+      )}
+
+      {screen === "clubs" && (
+        <ClubSelect
+          country={country}
+          options={clubOptions}
+          onChoose={chooseClub}
+          onExit={() => setScreen("home")}
+          loading={loading}
+          error={error}
         />
       )}
 

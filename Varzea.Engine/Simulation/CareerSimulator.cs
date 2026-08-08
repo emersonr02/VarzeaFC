@@ -11,11 +11,13 @@ namespace Varzea.Engine.Simulation;
 public sealed class CareerSimulator
 {
     private readonly GameRuleset _rules;
+    private readonly ClubDirectory _clubs;
     private readonly List<Legend> _legends;
 
-    public CareerSimulator(GameRuleset rules)
+    public CareerSimulator(GameRuleset rules, ClubDirectory clubs)
     {
         _rules = rules;
+        _clubs = clubs;
         _legends = rules.BuildLegends();
     }
 
@@ -138,6 +140,40 @@ public sealed class CareerSimulator
     /// </summary>
     public CareerProgress AdvanceCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: true);
 
+    /// <summary>
+    /// As 3 opções de clube real (Roadmap pós-§9, painel Clube) pro país/posição/draft
+    /// dados — mesma sequência de RNG que RunCareer consome até este ponto (retireAge,
+    /// peakAge, gap, tier), pra que a opção realmente escolhida bata com o que a
+    /// carreira de verdade vai usar. Existe fora de RunCareer porque a UI precisa
+    /// mostrar as opções ANTES da carreira começar a rodar de verdade (mesmo padrão de
+    /// PreviewNextDraftRound pro draft).
+    /// </summary>
+    public IReadOnlyList<string> StartingClubOptions(ulong seed, string countryName, int[] draftPicks, Pos position)
+    {
+        var attrs = ResolveDraft(seed, draftPicks);
+        int potential = OverallFor(attrs, position);
+        var curve = _rules.Curve;
+        var rng = Pcg32.Derive(seed, "career");
+        rng.NextInt(curve.MinRetireAge, curve.MaxRetireAge);
+        rng.NextInt(curve.MinPeakAge, curve.MaxPeakAge);
+        rng.NextInt(curve.MinPotentialGap, curve.MaxPotentialGap);
+        int tier = StartingTier(potential, rng);
+        return SampleDistinctClubs(_clubs.PoolFor(countryName, tier), 3, rng);
+    }
+
+    private static List<string> SampleDistinctClubs(IReadOnlyList<string> pool, int count, Pcg32 rng)
+    {
+        var remaining = new List<string>(pool);
+        var chosen = new List<string>();
+        for (int i = 0; i < count && remaining.Count > 0; i++)
+        {
+            int idx = rng.NextInt(0, remaining.Count - 1);
+            chosen.Add(remaining[idx]);
+            remaining.RemoveAt(idx);
+        }
+        return chosen;
+    }
+
     private CareerProgress RunCareer(CareerRecipe recipe, bool interactive)
     {
         var attrs = ResolveDraft(recipe.Seed, recipe.DraftPicks);
@@ -156,6 +192,18 @@ public sealed class CareerSimulator
         int overall = Math.Clamp(potential - gap, 40, Math.Max(41, potential - 4));
 
         int tier = StartingTier(potential, rng);
+        // 3 clubes reais candidatos ao tier inicial (Roadmap pós-§9, painel Clube) —
+        // mesma sequência de sorteio de StartingClubOptions, consumida aqui de novo pra
+        // manter o rng em sincronia com o que a UI já mostrou. StartingClubChoice fora
+        // dos limites (ou null, como o Monte Carlo sempre manda) cai na opção 0 — nunca
+        // pausa, carreira roda até o fim do mesmo jeito de antes deste recurso existir.
+        var startingClubOptions = SampleDistinctClubs(_clubs.PoolFor(recipe.Country, tier), 3, rng);
+        int startingClubIdx = recipe.StartingClubChoice is { } sc && sc >= 0 && sc < startingClubOptions.Count ? sc : 0;
+        string clubName = startingClubOptions.Count > 0 ? startingClubOptions[startingClubIdx] : "Clube Amador";
+        // Guarda o clube "dono do contrato" durante um empréstimo (RequestLoan) — ver
+        // uso junto de parentTier mais abaixo; precisa ser o MESMO clube de antes do
+        // empréstimo, não um novo sorteio no mesmo tier.
+        string parentClubName = "";
         int transferIdx = 0;
         // Índice separado pra PendingContractChoice (Roadmap §9 Bloco 3, corte de escopo
         // fechado — "1+ propostas") — mesmo padrão de transferIdx, mas indexando
@@ -213,6 +261,7 @@ public sealed class CareerSimulator
             if (parentTier >= 0)
             {
                 tier = parentTier;
+                clubName = parentClubName;
                 parentTier = -1;
             }
 
@@ -336,7 +385,9 @@ public sealed class CareerSimulator
                     {
                         requestGranted = true;
                         parentTier = tier;
+                        parentClubName = clubName;
                         tier = Math.Max(1, tier - 1);
+                        clubName = _clubs.PickClub(recipe.Country, tier, rng);
                     }
                     break;
                 case SeasonRequestKind.RequestPromiseTitle:
@@ -389,7 +440,7 @@ public sealed class CareerSimulator
                 // ficam no valor padrão — a temporada nunca chegou lá.
                 result.Timeline.Add(new SeasonResult
                 {
-                    Age = age, Overall = overall, ClubTier = tier,
+                    Age = age, Overall = overall, ClubTier = tier, ClubName = clubName,
                     Injury = injury, LeaguePosition = 20,
                     TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                     IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
@@ -429,12 +480,21 @@ public sealed class CareerSimulator
             int st = Output(rng, overall, factors.Defending, 95, perf, apps, role.DefenseMod);
             int scs = (int)Math.Round(apps * Math.Clamp(0.10 + factors.Defending * (0.22 + perf / 160.0), 0, 0.60));
 
+            // Tabela de classificação real (Roadmap pós-§9, painel Clube) — os outros
+            // clubes da MESMA divisão do jogador jogam pontos corridos entre si; a
+            // força do próprio jogador nessa tabela é a força de base do clube +
+            // perf (bom o bastante pra puxar o time, ruim o bastante pra afundar).
+            var rivals = _clubs.LeagueRivals(recipe.Country, tier, clubName);
+            double ownStrength = _clubs.BaseStrength(recipe.Country, clubName) + perf;
+            var (leaguePosition, leagueTable) = SimulateLeagueTable(clubName, ownStrength, rivals, recipe.Country, rng);
+
             var season = new SeasonResult
             {
-                Age = age, Overall = overall, ClubTier = tier, Apps = apps,
+                Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, Apps = apps,
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
-                LeaguePosition = Math.Clamp((int)Math.Round(11 - perf / 2.0 + (rng.NextDouble() * 6 - 3)), 1, 20)
+                LeaguePosition = leaguePosition,
+                LeagueTable = leagueTable
             };
 
             // --- LIGA ---
@@ -669,6 +729,7 @@ public sealed class CareerSimulator
                     accepted = true;
                     upgrade = contractProposals[choice].Upgrade;
                     tier = Math.Clamp(contractProposals[choice].ClubTier, 1, 5);
+                    clubName = _clubs.PickClub(recipe.Country, tier, rng);
                 }
                 // choice inválido/-1: accepted fica false, tier não muda aqui — o bloco de
                 // reinício de contrato mais abaixo já trata "recusou todas" como o
@@ -696,6 +757,7 @@ public sealed class CareerSimulator
                 // caminho que o alimenta) — sem o clamp, tier podia sair de [1,5] e quebrar
                 // o lookup de Tiers na próxima temporada.
                 tier = Math.Clamp(tier + (accepted ? (upgrade ? 1 : -1) : 0), 1, 5);
+                if (accepted) clubName = _clubs.PickClub(recipe.Country, tier, rng);
             }
 
             // Reinicia a contagem do contrato sempre que um contrato NOVO começa: renovou,
@@ -788,10 +850,10 @@ public sealed class CareerSimulator
 
             var finished = new SeasonResult
             {
-                Age = season.Age, Overall = season.Overall, ClubTier = season.ClubTier,
+                Age = season.Age, Overall = season.Overall, ClubTier = season.ClubTier, ClubName = season.ClubName,
                 Apps = season.Apps, Goals = season.Goals, Assists = season.Assists,
                 Tackles = season.Tackles, CleanSheets = season.CleanSheets,
-                LeaguePosition = season.LeaguePosition, Injury = season.Injury,
+                LeaguePosition = season.LeaguePosition, LeagueTable = season.LeagueTable, Injury = season.Injury,
                 Caps = seasonCaps, InTeamOfTheYear = toty,
                 HadTransferOffer = offer, AcceptedTransfer = accepted,
                 TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
@@ -881,6 +943,55 @@ public sealed class CareerSimulator
         }
 
         return proposals;
+    }
+
+    /// <summary>Escala arbitrária de força de time — só precisa manter ordem e dar
+    /// diferenças plausíveis num modelo tipo Elo; 30 pontos de diferença já deixa o mais
+    /// forte favorito claro sem tornar o resultado garantido (ver PWinDenominator).</summary>
+    private const double EloScale = 30.0;
+    private const double BaseDrawChance = 0.24;
+
+    /// <summary>
+    /// Tabela de classificação real de pontos corridos (Roadmap pós-§9, painel Clube) —
+    /// os clubes RIVAIS da mesma divisão do jogador jogam entre si E contra o jogador,
+    /// um turno único (cada par joga uma vez), pontos por vitória/empate/derrota
+    /// (3/1/0). A força do jogador (<paramref name="ownStrength"/>) já vem calculada
+    /// pelo chamador a partir do clube + perf da temporada; os rivais recebem a força
+    /// de base do próprio clube (ver ClubDirectory.BaseStrength) mais um ruído fixo
+    /// pra a tabela não ficar idêntica toda temporada.
+    /// </summary>
+    private (int Position, List<LeagueTableRow> Table) SimulateLeagueTable(
+        string ownClub, double ownStrength, IReadOnlyList<string> rivals, string countryName, Pcg32 rng)
+    {
+        var strength = new Dictionary<string, double> { [ownClub] = ownStrength };
+        foreach (var rival in rivals)
+            strength[rival] = _clubs.BaseStrength(countryName, rival) + (rng.NextDouble() * 20 - 10);
+
+        var points = strength.Keys.ToDictionary(k => k, _ => 0);
+        var names = strength.Keys.ToList();
+        for (int i = 0; i < names.Count; i++)
+        {
+            for (int j = i + 1; j < names.Count; j++)
+            {
+                double diff = strength[names[i]] - strength[names[j]];
+                double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
+                double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
+                double roll = rng.NextDouble();
+                if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; }
+                else if (roll < drawChance + (1 - drawChance) * pHome) points[names[i]] += 3;
+                else points[names[j]] += 3;
+            }
+        }
+
+        var ranked = names
+            .OrderByDescending(n => points[n])
+            .ThenByDescending(n => strength[n])
+            .ThenBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        int position = ranked.IndexOf(ownClub) + 1;
+        var table = ranked.Select(n => new LeagueTableRow(n, points[n], n == ownClub)).ToList();
+        return (position, table);
     }
 
     private static InjurySeverity RollInjury(Pcg32 rng, int age)

@@ -21,6 +21,8 @@ public class AdvanceCareerTests
 {
     private static readonly GameRuleset Rules =
         GameRuleset.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "balance.json"));
+    private static readonly ClubDirectory Clubs =
+        ClubDirectory.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "clubs.json"));
 
     private static CareerRecipe FullRecipe(ulong seed) => new(
         Seed: seed,
@@ -99,7 +101,7 @@ public class AdvanceCareerTests
     [InlineData(123_456UL)]
     public void StepByStep_MatchesBatchSimulation(ulong seed)
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = FullRecipe(seed);
 
         string direct = Hash(sim.SimulateCareer(recipe));
@@ -112,7 +114,7 @@ public class AdvanceCareerTests
     [Fact]
     public void PendingOffer_SeasonNeverAppearsInTimelineUntilResolved()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = FullRecipe(42);
 
         var progress = sim.AdvanceCareer(recipe with { TransferChoices = Array.Empty<bool>(), ContractChoices = Array.Empty<int>() });

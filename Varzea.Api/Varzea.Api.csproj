@@ -18,5 +18,8 @@
     <None Include="..\Varzea.Engine\Ruleset\rarity-weights.json" Link="Ruleset\rarity-weights.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\Varzea.Engine\Ruleset\clubs.json" Link="Ruleset\clubs.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

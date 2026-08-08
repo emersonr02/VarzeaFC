@@ -53,10 +53,19 @@ export interface PositionLockedResponse {
   role: string;
 }
 
+// Roadmap pós-§9, painel Clube: uma linha da tabela de classificação real.
+export interface LeagueTableRow {
+  clubName: string;
+  points: number;
+  isPlayerClub: boolean;
+}
+
 export interface SeasonResult {
   age: number;
   overall: number;
   clubTier: number;
+  // Nome do clube real (Roadmap pós-§9) — vem de clubs.json, nunca gerado no front.
+  clubName: string;
   apps: number;
   goals: number;
   assists: number;
@@ -97,8 +106,20 @@ export interface SeasonResult {
   // e se foi cumprida — promisedTitle=false quando nenhuma promessa foi feita.
   promisedTitle: boolean;
   promiseFulfilled: boolean;
+  // Tabela de classificação real da divisão do jogador nesta temporada.
+  leagueTable: LeagueTableRow[];
   requestMade: SeasonRequestKind;
   requestGranted: boolean;
+}
+
+export interface ClubOptionsResponse {
+  token: string;
+  options: string[];
+}
+
+export interface ClubChosenResponse {
+  token: string;
+  clubName: string;
 }
 
 export interface PendingTransferOffer {

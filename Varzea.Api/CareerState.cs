@@ -21,5 +21,9 @@ public sealed record CareerState(
     /// <summary>Índices de propostas escolhidas quando o contrato vence sem renovação
     /// (Roadmap §9 Bloco 3, "múltiplas propostas") — ver AdvanceRequest.ContractChoiceIndex
     /// e CareerRecipe.ContractChoices.</summary>
-    int[]? ContractChoices = null
+    int[]? ContractChoices = null,
+    /// <summary>Índice (0-2) do clube real escolhido entre as 3 opções iniciais do
+    /// próprio país (Roadmap pós-§9, painel Clube) — ver /careers/clubs e
+    /// CareerRecipe.StartingClubChoice. Null = ainda não escolhido.</summary>
+    int? StartingClubChoice = null
 );

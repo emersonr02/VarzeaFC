@@ -17,5 +17,8 @@
     <None Include="..\Varzea.Engine\Ruleset\balance.json" Link="Ruleset\balance.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\Varzea.Engine\Ruleset\clubs.json" Link="Ruleset\clubs.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

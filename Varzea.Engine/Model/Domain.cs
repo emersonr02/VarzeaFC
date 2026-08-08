@@ -74,20 +74,35 @@ public sealed record CareerRecipe(
     /// de contrato curto de "prova". Mesmo padrão de TransferChoices, mas com índice em
     /// vez de bool porque "1 de N" não cabe num bool[]. Null/vazio = comportamento padrão
     /// (não muda a amostra do Monte Carlo).</summary>
-    int[]? ContractChoices = null
+    int[]? ContractChoices = null,
+    /// <summary>Índice (0-2) do clube real escolhido entre as 3 opções iniciais do
+    /// próprio país (Roadmap pós-§9, painel Clube) — ver CareerSimulator.
+    /// StartingClubOptions. Fora dos limites ou null = primeira opção (índice 0),
+    /// mesmo comportamento determinístico usado pelo Monte Carlo (nunca pausa).</summary>
+    int? StartingClubChoice = null
 );
+
+/// <summary>Uma linha da tabela de classificação real (Roadmap pós-§9, painel Clube) —
+/// clube + pontos, na ordem já ordenada por SimulateLeagueTable.</summary>
+public sealed record LeagueTableRow(string ClubName, int Points, bool IsPlayerClub);
 
 public sealed class SeasonResult
 {
     public int Age { get; init; }
     public int Overall { get; init; }
     public int ClubTier { get; init; }
+    /// <summary>Nome do clube real (Roadmap pós-§9) que o jogador defendeu esta
+    /// temporada — vem de ClubDirectory (clubs.json), nunca gerado no front.</summary>
+    public string ClubName { get; init; } = "";
     public int Apps { get; init; }
     public int Goals { get; init; }
     public int Assists { get; init; }
     public int Tackles { get; init; }
     public int CleanSheets { get; init; }
     public int LeaguePosition { get; init; }
+    /// <summary>Tabela de classificação real desta temporada, já ordenada — clubes da
+    /// mesma divisão do jogador disputando pontos corridos (Roadmap pós-§9).</summary>
+    public IReadOnlyList<LeagueTableRow> LeagueTable { get; init; } = Array.Empty<LeagueTableRow>();
     public InjurySeverity Injury { get; init; }
     public List<TitleKind> Titles { get; } = new();
     public int Caps { get; init; }

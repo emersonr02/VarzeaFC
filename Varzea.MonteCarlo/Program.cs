@@ -12,9 +12,11 @@ public static class Program
     {
         int n = args.Length > 0 && int.TryParse(args[0], out var parsed) ? parsed : 10_000;
         string balancePath = args.Length > 1 ? args[1] : "balance.json";
+        string clubsPath = Path.Combine(Path.GetDirectoryName(balancePath) ?? ".", "clubs.json");
 
         var rules = GameRuleset.LoadFromFile(balancePath);
-        var sim = new CareerSimulator(rules);
+        var clubs = ClubDirectory.LoadFromFile(clubsPath);
+        var sim = new CareerSimulator(rules, clubs);
 
         Console.WriteLine($"Ruleset v{rules.Version} · rodando {n:N0} carreiras...\n");
 

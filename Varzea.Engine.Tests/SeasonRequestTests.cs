@@ -30,6 +30,8 @@ public class SeasonRequestTests
 {
     private static readonly GameRuleset Rules =
         GameRuleset.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "balance.json"));
+    private static readonly ClubDirectory Clubs =
+        ClubDirectory.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "clubs.json"));
 
     private static readonly SeasonRequestKind[] RequestCycle =
     {
@@ -143,7 +145,7 @@ public class SeasonRequestTests
     [InlineData(123_456UL)]
     public void StepByStep_MatchesBatchSimulation_WithFinalSeasonRequests(ulong seed)
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var baseRecipe = BaseRecipe(seed);
 
         var (stepped, finalRequests, pauses, realCalls) = AdvanceToCompletion(sim, baseRecipe);
@@ -175,7 +177,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestLeaveNow_SurvivesReplay_WhenItImmediatelyPausesTheSameCall()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         // Igual a AdvanceCareerTests.AdvanceToCompletion: a chamada real de /careers/advance
         // começa com TransferChoices VAZIO (nenhuma decisão feita ainda) — passar o array
         // cheio de baseRecipe direto faria a oferta resolver na hora em vez de pausar.
@@ -210,7 +212,7 @@ public class SeasonRequestTests
     [Fact]
     public void SetPieces_OnceGranted_AppliesToLaterSeasons()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(1) with { SeasonRequests = AlwaysSetPieces };
 
         var result = sim.SimulateCareer(recipe);
@@ -226,7 +228,7 @@ public class SeasonRequestTests
     [Fact]
     public void ContractChoice_AcceptedProposal_ChangesTier_DeclinedProposal_KeepsTier()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var alwaysLeave = Enumerable.Repeat(SeasonRequestKind.RequestLeaveAtContractEnd, 25).ToArray();
         // TransferChoices vazio (nunca aceita nenhuma oferta fora do ciclo) — aceitar
         // uma dessas TAMBÉM reseta o relógio do contrato (mesmo bloco de reset do
@@ -281,7 +283,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestLoan_DropsTierForOneSeasonThenRestores()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(7) with { SeasonRequests = LoanOnlyFirstSeason, TransferChoices = Array.Empty<bool>() };
 
         var result = sim.SimulateCareer(recipe);
@@ -299,7 +301,7 @@ public class SeasonRequestTests
     [Fact]
     public void Captaincy_OnceGranted_StaysGrantedForRestOfCareer()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(1) with { SeasonRequests = AlwaysCaptaincy };
 
         var result = sim.SimulateCareer(recipe);
@@ -314,7 +316,7 @@ public class SeasonRequestTests
     [Fact]
     public void Fatigue_AccumulatesEvenWithoutAnyRequest()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(7); // SeasonRequests null — comportamento padrão
 
         var result = sim.SimulateCareer(recipe);
@@ -331,7 +333,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestRest_HalvesAppsAndReducesFatigue_ComparedToNoRest()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var baseRecipe = BaseRecipe(7);
 
         var rested = sim.SimulateCareer(baseRecipe with { SeasonRequests = AlwaysRest });
@@ -356,7 +358,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestPersonalTrainer_StaysGranted_AndSlowsFatigueAccumulation()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var baseRecipe = BaseRecipe(7);
 
         var withTrainer = sim.SimulateCareer(baseRecipe with { SeasonRequests = PersonalTrainerThenNone });
@@ -381,7 +383,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestPlayInjured_OnlyMattersWhenInjuryActuallyRolled()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPlayInjured };
 
         var result = sim.SimulateCareer(recipe);
@@ -406,7 +408,7 @@ public class SeasonRequestTests
     [Fact]
     public void RequestPromiseTitle_FulfilledOnlyWhenLeagueIsWon_AndMovesMoralInBothDirections()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPromiseTitle };
 
         var result = sim.SimulateCareer(recipe);

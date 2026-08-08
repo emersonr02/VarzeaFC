@@ -17,6 +17,8 @@ public class DeterminismTests
 {
     private static readonly GameRuleset Rules =
         GameRuleset.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "balance.json"));
+    private static readonly ClubDirectory Clubs =
+        ClubDirectory.LoadFromFile(Path.Combine(AppContext.BaseDirectory, "Ruleset", "clubs.json"));
 
     private static CareerRecipe SampleRecipe(ulong seed, Pos position = Pos.ST) => new(
         Seed: seed,
@@ -39,7 +41,7 @@ public class DeterminismTests
     [InlineData(999_999UL)]
     public void SameRecipe_Produces1000IdenticalHashes(ulong seed)
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipe = SampleRecipe(seed);
         string baseline = Hash(sim.SimulateCareer(recipe));
 
@@ -50,7 +52,7 @@ public class DeterminismTests
     [Fact]
     public void DifferentSeeds_ProduceDifferentCareers()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         string a = Hash(sim.SimulateCareer(SampleRecipe(1)));
         string b = Hash(sim.SimulateCareer(SampleRecipe(2)));
         Assert.NotEqual(a, b);
@@ -59,7 +61,7 @@ public class DeterminismTests
     [Fact]
     public void SameSeed_DifferentDraftPicks_ChangesResult()
     {
-        var sim = new CareerSimulator(Rules);
+        var sim = new CareerSimulator(Rules, Clubs);
         var recipeA = SampleRecipe(7) with { DraftPicks = new[] { 0, 0, 0, 0, 0, 0, 0, 0 } };
         var recipeB = SampleRecipe(7) with { DraftPicks = new[] { 2, 2, 2, 2, 2, 2, 2, 2 } };
 

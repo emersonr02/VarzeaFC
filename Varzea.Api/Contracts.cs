@@ -23,6 +23,17 @@ public sealed record PositionRequest(string Token, Pos Position, string Country)
 
 public sealed record PositionLockedResponse(string Token, int Potential, string Role);
 
+public sealed record ClubOptionsRequest(string Token);
+
+/// <summary>3 clubes reais do país já escolhido (Roadmap pós-§9, painel Clube) — o
+/// jogador escolhe um em /careers/clubs/choose antes de a carreira começar a rodar de
+/// verdade. Ver CareerSimulator.StartingClubOptions.</summary>
+public sealed record ClubOptionsResponse(string Token, IReadOnlyList<string> Options);
+
+public sealed record ChooseClubRequest(string Token, int Choice);
+
+public sealed record ClubChosenResponse(string Token, string ClubName);
+
 /// <summary>Request só é anexado a SeasonRequests quando Decision e ContractChoiceIndex
 /// são ambos null — ver /careers/advance. Enviar Request junto de uma resolução de
 /// pausa não faz sentido: o pedido é feito ANTES de avançar pra próxima temporada, nunca

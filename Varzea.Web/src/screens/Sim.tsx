@@ -40,7 +40,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   const [awaitingIndex, setAwaitingIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dash, setDash] = useState<{ age: number; overall: number; clubTier: number } | null>(null);
+  const [dash, setDash] = useState<{ age: number; overall: number; clubTier: number; clubName: string } | null>(null);
   // Painel Contrato + Técnico (roadmap pós-§9): última temporada fechada (pra mostrar
   // contrato/braçadeira/bolas paradas fora do ticker) e o pedido selecionado pra
   // próxima temporada, ainda não enviado.
@@ -54,11 +54,12 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   }
 
   function dashFrom(c: ClipData) {
-    if (c.kind === "offer") return { age: c.offer.age, overall: c.offer.overall, clubTier: c.offer.clubTier };
-    // PendingContractChoice não carrega o clubTier atual (as propostas têm o tier DELAS,
-    // não o de origem) — mantém o último tier conhecido no dash até a escolha resolver.
-    if (c.kind === "contractChoice") return { age: c.choice.age, overall: c.choice.overall, clubTier: dash?.clubTier ?? 1 };
-    return { age: c.season.age, overall: c.season.overall, clubTier: c.season.clubTier };
+    // Ofertas/propostas ainda não resolvidas não têm um clube de destino REAL definido
+    // (isso é o próximo passo do roadmap — mais propostas de clubes) — o dash continua
+    // mostrando o clube ATUAL até a decisão fechar.
+    if (c.kind === "offer") return { age: c.offer.age, overall: c.offer.overall, clubTier: c.offer.clubTier, clubName: dash?.clubName ?? "" };
+    if (c.kind === "contractChoice") return { age: c.choice.age, overall: c.choice.overall, clubTier: dash?.clubTier ?? 1, clubName: dash?.clubName ?? "" };
+    return { age: c.season.age, overall: c.season.overall, clubTier: c.season.clubTier, clubName: c.season.clubName };
   }
 
   // Não lê nem grava o token no estado do React — quem chama passa o token explicitamente
@@ -239,7 +240,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           <div className="dash-item"><div className="dash-k">Idade</div><div className="dash-v">{dash?.age ?? "—"}</div></div>
           <div className="dash-item"><div className="dash-k">Overall</div><div className="dash-v">{dash?.overall ?? "—"}</div></div>
           <div className="dash-item"><div className="dash-k">Potencial</div><div className="dash-v">{potential}</div></div>
-          <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash ? clubFor(dash.clubTier) : "—"}</div></div>
+          <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash?.clubName || "—"}</div></div>
         </div>
 
         {lastSeason && (
@@ -304,7 +305,7 @@ function Clip({
   onChooseContract: (index: number) => void;
 }) {
   if (clip.kind === "final") return <FinalClip season={clip.season} title={clip.title} clubFor={clubFor} nickname={nickname} country={country} />;
-  if (clip.kind === "season") return <SeasonClip season={clip.season} clubFor={clubFor} country={country} />;
+  if (clip.kind === "season") return <SeasonClip season={clip.season} country={country} />;
   if (clip.kind === "awards") return <AwardsClip season={clip.season} />;
   if (clip.kind === "retire") return <div className="clip"><div className="season-tag">{clip.season.age} anos</div><div className="headline">Fim precoce da carreira</div><div className="body">Uma lesão grave encerra a carreira antes da hora. A torcida se despede com carinho.</div></div>;
   if (clip.kind === "contractChoice") return <ContractChoiceClip choice={clip.choice} clubFor={clubFor} isAwaiting={isAwaiting} resolvedChoiceIndex={resolvedChoiceIndex} onChoose={onChooseContract} />;
@@ -316,7 +317,7 @@ function FinalClip({ season, title, clubFor, nickname, country }: { season: Seas
     title === "DomesticCup" ? (DOMESTIC_CUP_NAME[country] ?? "Copa Nacional") :
     title === "WorldCup" ? "Final da Copa do Mundo" :
     continentalName(country, title === "ContinentalPrimary");
-  const clubName = title === "WorldCup" ? `Seleção de ${country}` : clubFor(season.clubTier);
+  const clubName = title === "WorldCup" ? `Seleção de ${country}` : season.clubName;
   const opponent = title === "WorldCup" ? `Seleção de ${randomOpponentCountry(country)}` : clubFor(season.clubTier + (Math.random() < 0.5 ? 1 : -1));
   const { teamGoals, oppGoals, events } = buildFinalNarrative(nickname, true);
   return (
@@ -376,9 +377,20 @@ function requestNote(season: SeasonResult): string | null {
   }
 }
 
-function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFor: (t: number) => string; country: string }) {
+// Tabela real (Roadmap pós-§9, painel Clube): top 5 + a linha do jogador se ele estiver
+// fora do top 5 (com "…" separando), pra não estourar o espaço do recorte.
+function leagueTableRowsToShow(season: SeasonResult): { rank: number; clubName: string; points: number; isPlayerClub: boolean }[] {
+  const ranked = season.leagueTable.map((r, i) => ({ rank: i + 1, ...r }));
+  const top5 = ranked.slice(0, 5);
+  const ownIdx = ranked.findIndex((r) => r.isPlayerClub);
+  if (ownIdx >= 0 && ownIdx >= 5) return [...top5, ranked[ownIdx]];
+  return top5;
+}
+
+function SeasonClip({ season, country }: { season: SeasonResult; country: string }) {
   const champion = season.leaguePosition === 1;
-  const club = clubFor(season.clubTier);
+  const club = season.clubName;
+  const tableRows = leagueTableRowsToShow(season);
   const leagueName = LEAGUE_NAME[country] ?? "Liga Nacional";
   const injuryNote = INJURY_LABEL[season.injury];
   const note = moraleNote(season);
@@ -399,6 +411,23 @@ function SeasonClip({ season, clubFor, country }: { season: SeasonResult; clubFo
       <div className="stats-line" style={{ marginTop: 4 }}>
         {moraleIcon(season.teamMorale)} Elenco · {moraleIcon(season.coachMorale)} Técnico · {moraleIcon(season.crowdMorale)} Torcida
       </div>
+      {tableRows.length > 0 && (
+        <div className="body" style={{ marginTop: 6, fontSize: 11 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela · {leagueName}</div>
+          {tableRows.map((r, i) => (
+            <div key={r.clubName}>
+              {i > 0 && r.rank > tableRows[i - 1].rank + 1 && <div style={{ opacity: 0.5 }}>···</div>}
+              <div style={{
+                display: "flex", justifyContent: "space-between",
+                fontWeight: r.isPlayerClub ? 700 : 400,
+                color: r.isPlayerClub ? "var(--blue)" : undefined,
+              }}>
+                <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}
       {season.contractExpiring && season.contractRenewed && (
         <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>

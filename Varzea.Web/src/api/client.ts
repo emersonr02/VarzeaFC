@@ -1,6 +1,8 @@
 import type {
   AdvanceResponse,
   ApiError as ApiErrorType,
+  ClubChosenResponse,
+  ClubOptionsResponse,
   DraftCompleteResponse,
   DraftRoundResponse,
   MetaResponse,
@@ -34,6 +36,12 @@ export const api = {
 
   position: (token: string, position: Pos, country: string) =>
     send<PositionLockedResponse>("/careers/position", { token, position, country }),
+
+  // Roadmap pós-§9, painel Clube: 3 clubes reais do país já escolhido.
+  clubOptions: (token: string) => send<ClubOptionsResponse>("/careers/clubs", { token }),
+
+  chooseClub: (token: string, choice: number) =>
+    send<ClubChosenResponse>("/careers/clubs/choose", { token, choice }),
 
   // request só faz sentido quando decision e contractChoiceIndex são undefined
   // (avançando pra temporada nova, não resolvendo uma pausa pendente) — ver

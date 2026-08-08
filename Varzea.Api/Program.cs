@@ -26,6 +26,8 @@ string rulesPath = builder.Configuration["Varzea:RulesetPath"]
     ?? Path.Combine(AppContext.BaseDirectory, "Ruleset", "balance.json");
 string weightsPath = builder.Configuration["Varzea:WeightsPath"]
     ?? Path.Combine(AppContext.BaseDirectory, "Ruleset", "rarity-weights.json");
+string clubsPath = builder.Configuration["Varzea:ClubsPath"]
+    ?? Path.Combine(AppContext.BaseDirectory, "Ruleset", "clubs.json");
 
 // Em produção o segredo TEM de vir de configuração/variável de ambiente — nunca do código.
 // Um valor efêmero em dev é seguro porque tokens de draft são de curta duração (uma
@@ -36,7 +38,8 @@ string tokenSecret = builder.Configuration["Varzea:TokenSecret"]
         : throw new InvalidOperationException("Configurar Varzea:TokenSecret fora do ambiente de desenvolvimento."));
 
 var rules = GameRuleset.LoadFromFile(rulesPath);
-var simulator = new CareerSimulator(rules);
+var clubs = ClubDirectory.LoadFromFile(clubsPath);
+var simulator = new CareerSimulator(rules, clubs);
 var weights = RarityWeights.FromJson(File.ReadAllText(weightsPath));
 var leaguePrestige = rules.Countries.ToDictionary(kv => kv.Key, kv => kv.Value.LeaguePrestige);
 var scorer = new CareerScorer(weights, leaguePrestige);
@@ -98,6 +101,29 @@ app.MapPost("/careers/position", (PositionRequest req) =>
     return Results.Ok(new PositionLockedResponse(tokens.Issue(next), potential, role.Name));
 });
 
+app.MapPost("/careers/clubs", (ClubOptionsRequest req) =>
+{
+    if (tokens.TryVerify(req.Token) is not { } state) return Results.Unauthorized();
+    if (state.Position is null || state.Country is null)
+        return Results.BadRequest("posição/país ainda não definidos");
+
+    var options = simulator.StartingClubOptions(state.Seed, state.Country, state.DraftPicks, state.Position.Value);
+    return Results.Ok(new ClubOptionsResponse(tokens.Issue(state), options));
+});
+
+app.MapPost("/careers/clubs/choose", (ChooseClubRequest req) =>
+{
+    if (tokens.TryVerify(req.Token) is not { } state) return Results.Unauthorized();
+    if (state.Position is null || state.Country is null)
+        return Results.BadRequest("posição/país ainda não definidos");
+
+    var options = simulator.StartingClubOptions(state.Seed, state.Country, state.DraftPicks, state.Position.Value);
+    if (req.Choice < 0 || req.Choice >= options.Count) return Results.BadRequest("escolha inválida");
+
+    var next = state with { StartingClubChoice = req.Choice };
+    return Results.Ok(new ClubChosenResponse(tokens.Issue(next), options[req.Choice]));
+});
+
 app.MapPost("/careers/advance", (AdvanceRequest req) =>
 {
     if (tokens.TryVerify(req.Token) is not { } state) return Results.Unauthorized();
@@ -138,7 +164,7 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
 
     var recipe = new CareerRecipe(
         state.Seed, state.Country, state.DraftPicks, state.Position.Value, choices, state.RulesetVersion,
-        seasonRequests, contractChoices);
+        seasonRequests, contractChoices, state.StartingClubChoice);
     var progress = simulator.AdvanceCareer(recipe);
 
     // Uma única chamada pode revelar VÁRIAS temporadas de uma vez quando não há pausa no
@@ -175,7 +201,8 @@ app.MapPost("/careers/save", async (SaveRequest req, HttpContext http) =>
     // transferência por vir, SimulateCareer trata como recusada (mesmo fallback de sempre).
     var recipe = new CareerRecipe(
         state.Seed, state.Country, state.DraftPicks, state.Position.Value,
-        state.TransferChoices, state.RulesetVersion, state.SeasonRequests, state.ContractChoices);
+        state.TransferChoices, state.RulesetVersion, state.SeasonRequests, state.ContractChoices,
+        state.StartingClubChoice);
     var result = simulator.SimulateCareer(recipe);
     var score = scorer.Score(result);
 
