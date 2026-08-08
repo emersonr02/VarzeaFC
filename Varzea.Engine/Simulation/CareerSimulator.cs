@@ -317,8 +317,13 @@ public sealed class CareerSimulator
             }
             else if (pendingAutoTier >= 0)
             {
+                // Acesso/rebaixamento muda a DIVISÃO, nunca a identidade do clube — bug
+                // real encontrado: sorteava um clube novo aleatório na hora de subir/
+                // descer, como se o jogador tivesse sido transferido sem escolher nada
+                // ("mudei de clube do nada depois de ser promovido"). O clube que sobe é
+                // o MESMO clube, agora competindo numa divisão diferente; só o tier
+                // (usado pra bucket de força/pool) muda.
                 tier = pendingAutoTier;
-                clubName = _clubs.PickClub(recipe.Country, tier, rng);
                 pendingAutoTier = -1;
             }
 

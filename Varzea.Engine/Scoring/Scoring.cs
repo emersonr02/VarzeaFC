@@ -126,8 +126,8 @@ public sealed class CareerScorer
     // novos (Rei da América, Equipe do Ano da América) empilham na mesma carreira de
     // elite sul-americana junto com BallonDOr/TeamOfTheYear — sem essa redução o bloco
     // de prêmios passava a dominar o top 10% (~50% medido, alvo ~25%).
-    private const double TitleScale = 4.2;
-    private const double AwardScale = 4.5;
+    private const double TitleScale = 3.9;
+    private const double AwardScale = 5.2;
     private const double TitleCap = 420;
     private const double AwardCap = 220;
     private const double ProductionCap = 28;

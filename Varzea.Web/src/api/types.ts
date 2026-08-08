@@ -151,6 +151,11 @@ export interface PendingTransferOffer {
 export interface ContractProposalOption {
   clubTier: number;
   upgrade: boolean;
+  // Clube real sorteado na hora de GERAR a proposta (mesmo nome que vira o clube
+  // aplicado se aceita) — bug real corrigido: esse campo já existia no motor (C#) mas
+  // nunca tinha sido espelhado aqui, então o front continuava usando clubFor() (nome
+  // 100% inventado) pra mostrar o botão da proposta.
+  clubName: string;
 }
 
 export interface PendingContractChoice {

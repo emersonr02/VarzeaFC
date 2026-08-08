@@ -332,7 +332,7 @@ function PendingPauseNotification({ pause, clubFor, onAccept, onDecline, onChoos
     <div className="notification-banner">
       {pause.kind === "offer"
         ? <OfferClip offer={pause.offer} clubFor={clubFor} onAccept={onAccept} onDecline={onDecline} />
-        : <ContractChoiceClip choice={pause.choice} clubFor={clubFor} onChoose={onChooseContract} />}
+        : <ContractChoiceClip choice={pause.choice} onChoose={onChooseContract} />}
     </div>
   );
 }
@@ -452,6 +452,35 @@ function SeasonNewsFlash({ season }: { season: SeasonResult }) {
   );
 }
 
+// "Quero também add logo nos clubes" — sem crests reais (direitos de imagem, fora de
+// escopo de um jogo de fantasia), um escudo genérico: iniciais + cor determinística por
+// nome de clube (hash simples), mesmo espírito do avatar de jogador (.legend-photo) já
+// usado no app. Mesmo clube = sempre a mesma cor/iniciais, em qualquer tela.
+function clubInitials(name: string): string {
+  const words = name.replace(/[^\p{L}0-9 ]/gu, " ").split(" ").filter((w) => w.length >= 2);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.replace(/[^\p{L}]/gu, "").slice(0, 2).toUpperCase() || "?";
+}
+
+function clubColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 38%)`;
+}
+
+function ClubBadge({ clubName, size = 34 }: { clubName: string; size?: number }) {
+  return (
+    <div style={{
+      width: size, height: size, minWidth: size, borderRadius: "50%",
+      background: clubColor(clubName), border: "2px solid var(--gold)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "var(--font-d)", color: "#fff", fontSize: size * 0.38, lineHeight: 1,
+    }}>
+      {clubInitials(clubName)}
+    </div>
+  );
+}
+
 // ClubDirectory.LeagueRivals: tier>=3 é a 1ª divisão, tier<3 é a 2ª — mesmo corte usado
 // no motor (ver ClubDirectory.cs). Sem isto, a 2ª divisão aparecia com o nome da 1ª
 // (bug real: "SpVgg em 5º na Bundesliga" — era a 2. Bundesliga, simulada certa, só
@@ -465,9 +494,15 @@ function leagueNameFor(clubTier: number, country: string): string {
 // Extraído pra ser reaproveitado tanto no resumo de cada temporada (SeasonClip) quanto
 // no painel de status do clube sempre visível no topo (roadmap pós-§9, "tela inicial
 // nesse estilo, com a tabela completa").
-function LeagueTableView({ rows }: { rows: ReturnType<typeof leagueTableRowsToShow> }) {
+// dark=true pro painel de status (fundo escuro do gramado) — dark=false (padrão) pro
+// resumo de temporada dentro do ticker (.clip é um cartão claro). Bug real corrigido:
+// o texto padrão herdava --ink (quase preto, pensado pra cartão claro) e ficava
+// ilegível sobre o fundo escuro do .dash-bar ("horrível, sem contraste nenhum").
+function LeagueTableView({ rows, dark = false }: { rows: ReturnType<typeof leagueTableRowsToShow>; dark?: boolean }) {
   if (rows.length === 0) return null;
   const relegationCut = rows.length - RELEGATION_SPOTS;
+  const rowColor = dark ? "rgba(255,255,255,0.92)" : undefined;
+  const ownColor = dark ? "var(--gold)" : "var(--blue)";
   return (
     <div style={{ maxHeight: 220, overflowY: "auto" }}>
       {rows.map((r) => {
@@ -476,18 +511,21 @@ function LeagueTableView({ rows }: { rows: ReturnType<typeof leagueTableRowsToSh
         return (
           <div key={r.clubName}>
             {r.rank === relegationCut + 1 && (
-              <div style={{ borderTop: "1px dashed #c0392b", color: "#c0392b", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", padding: "3px 0 2px", fontWeight: 700 }}>
+              <div style={{ borderTop: "1px dashed #c0392b", color: "#e05a4d", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", padding: "3px 0 2px", fontWeight: 700 }}>
                 Zona de rebaixamento
               </div>
             )}
             <div style={{
-              display: "flex", justifyContent: "space-between",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
               borderLeft: `3px solid ${inPromotionZone ? "#27ae60" : inRelegationZone ? "#c0392b" : "transparent"}`,
-              paddingLeft: 4,
+              paddingLeft: 4, paddingTop: 2, paddingBottom: 2,
               fontWeight: r.isPlayerClub ? 700 : 400,
-              color: r.isPlayerClub ? "var(--blue)" : undefined,
+              color: r.isPlayerClub ? ownColor : rowColor,
             }}>
-              <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                {r.rank}º <ClubBadge clubName={r.clubName} size={16} /> {r.clubName}
+              </span>
+              <span>{r.points} pts</span>
             </div>
           </div>
         );
@@ -521,9 +559,12 @@ function ClubStatusCard({ season, country }: { season: SeasonResult; country: st
     // ManagementPanel pra evitar o mesmo desalinhamento grid-vs-flex.
     <div className="dash-bar" style={{ display: "flex", flexDirection: "column", marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div style={{ fontFamily: "var(--font-d)", fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{season.clubName}</div>
-          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>{leagueName} · {season.leaguePosition}º lugar</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ClubBadge clubName={season.clubName} />
+          <div>
+            <div style={{ fontFamily: "var(--font-d)", fontSize: 20, fontWeight: 700, lineHeight: 1, color: "#fff" }}>{season.clubName}</div>
+            <div style={{ fontSize: 11, color: "var(--paper2)", marginTop: 2 }}>{leagueName} · {season.leaguePosition}º lugar</div>
+          </div>
         </div>
         {statusBadge && (
           <span style={{
@@ -540,8 +581,8 @@ function ClubStatusCard({ season, country }: { season: SeasonResult; country: st
       </div>
       {tableRows.length > 0 && (
         <div style={{ marginTop: 10, fontSize: 11 }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela completa · {leagueName}</div>
-          <LeagueTableView rows={tableRows} />
+          <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--paper2)" }}>Tabela completa · {leagueName}</div>
+          <LeagueTableView rows={tableRows} dark />
         </div>
       )}
     </div>
@@ -642,9 +683,8 @@ function OfferClip({ offer, clubFor, onAccept, onDecline }: {
 // contrato vence sem renovação — o jogador escolhe um ou recusa todas (contrato curto
 // de "prova", mesmo desfecho de recusar a proposta única de antes desta feature). Só
 // renderiza enquanto pendente, mesmo espírito de OfferClip acima.
-function ContractChoiceClip({ choice, clubFor, onChoose }: {
+function ContractChoiceClip({ choice, onChoose }: {
   choice: PendingContractChoice;
-  clubFor: (t: number) => string;
   onChoose: (index: number) => void;
 }) {
   const tag = choice.contractExpiring ? `Fim de contrato · ${choice.age} anos` : `Sondagem de mercado · ${choice.age} anos`;
@@ -661,7 +701,7 @@ function ContractChoiceClip({ choice, clubFor, onChoose }: {
       <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
         {choice.proposals.map((p, i) => (
           <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
-            {p.upgrade ? "⬆️ " : ""}Assinar com {clubFor(p.clubTier)}
+            {p.upgrade ? "⬆️ " : ""}Assinar com {p.clubName}
           </button>
         ))}
         <button className="btn-mini decline" onClick={() => onChoose(-1)}>{declineLabel}</button>
