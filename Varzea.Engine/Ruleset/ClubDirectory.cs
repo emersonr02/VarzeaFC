@@ -84,6 +84,15 @@ public sealed class ClubDirectory
         if (c.Divisao1.Contains(clubName)) return 65;
         return 40;
     }
+
+    /// <summary>Sorteia um país DIFERENTE do informado (roadmap pós-§9, transferência
+    /// internacional — "não vi uma partida com transferências para outra liga"). Null só
+    /// se por algum motivo só existir um país cadastrado.</summary>
+    public string? PickForeignCountry(string homeCountry, Pcg32 rng)
+    {
+        var others = Countries.Keys.Where(c => c != homeCountry).ToList();
+        return others.Count > 0 ? others[rng.NextInt(0, others.Count - 1)] : null;
+    }
 }
 
 public sealed class CountryClubs

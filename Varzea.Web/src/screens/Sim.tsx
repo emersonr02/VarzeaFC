@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { PendingContractChoice, Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
+import { useClubLogo } from "../data/clubLogos";
 import { dilemmaLine } from "../data/dilemmas";
 import {
   DOMESTIC_CUP_NAME,
@@ -452,10 +453,11 @@ function SeasonNewsFlash({ season }: { season: SeasonResult }) {
   );
 }
 
-// "Quero também add logo nos clubes" — sem crests reais (direitos de imagem, fora de
-// escopo de um jogo de fantasia), um escudo genérico: iniciais + cor determinística por
-// nome de clube (hash simples), mesmo espírito do avatar de jogador (.legend-photo) já
-// usado no app. Mesmo clube = sempre a mesma cor/iniciais, em qualquer tela.
+// "Quero logo real" — busca o escudo de verdade na TheSportsDB (ver data/clubLogos.ts);
+// enquanto carrega, ou se o clube não tiver entrada lá (comum pra times pequenos de 2ª
+// divisão na base de ~400 clubes), cai num escudo genérico: iniciais + cor
+// determinística por nome (hash simples), mesmo espírito do avatar de jogador
+// (.legend-photo) já usado no app. Mesmo clube = sempre a mesma cor/iniciais/logo.
 function clubInitials(name: string): string {
   const words = name.replace(/[^\p{L}0-9 ]/gu, " ").split(" ").filter((w) => w.length >= 2);
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
@@ -469,6 +471,22 @@ function clubColor(name: string): string {
 }
 
 function ClubBadge({ clubName, size = 34 }: { clubName: string; size?: number }) {
+  const logoUrl = useClubLogo(clubName);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (logoUrl && !imgFailed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={clubName}
+        onError={() => setImgFailed(true)}
+        style={{
+          width: size, height: size, minWidth: size, borderRadius: "50%",
+          objectFit: "contain", background: "#fff", border: "2px solid var(--gold)",
+        }}
+      />
+    );
+  }
   return (
     <div style={{
       width: size, height: size, minWidth: size, borderRadius: "50%",
@@ -540,7 +558,11 @@ function LeagueTableView({ rows, dark = false }: { rows: ReturnType<typeof leagu
 // clube atual, a divisão, o status na tabela (campeão/zona de acesso/rebaixamento) e a
 // tabela completa da última temporada fechada.
 function ClubStatusCard({ season, country }: { season: SeasonResult; country: string }) {
-  const leagueName = leagueNameFor(season.clubTier, country);
+  // "country" aqui é a NACIONALIDADE (fixa, escolhida no Setup) — a liga/divisão usa
+  // season.clubCountry, que pode divergir depois de uma transferência internacional
+  // (roadmap pós-§9, "não vi uma partida com transferências para outra liga").
+  const abroad = season.clubCountry !== country;
+  const leagueName = leagueNameFor(season.clubTier, season.clubCountry);
   const tableRows = leagueTableRowsToShow(season);
   const champion = season.leaguePosition === 1;
   const inPromotionZone = !champion && season.leaguePosition <= PROMOTION_SPOTS;
@@ -563,7 +585,9 @@ function ClubStatusCard({ season, country }: { season: SeasonResult; country: st
           <ClubBadge clubName={season.clubName} />
           <div>
             <div style={{ fontFamily: "var(--font-d)", fontSize: 20, fontWeight: 700, lineHeight: 1, color: "#fff" }}>{season.clubName}</div>
-            <div style={{ fontSize: 11, color: "var(--paper2)", marginTop: 2 }}>{leagueName} · {season.leaguePosition}º lugar</div>
+            <div style={{ fontSize: 11, color: "var(--paper2)", marginTop: 2 }}>
+              {abroad && <>🌍 {season.clubCountry} · </>}{leagueName} · {season.leaguePosition}º lugar
+            </div>
           </div>
         </div>
         {statusBadge && (
@@ -593,7 +617,10 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
   const champion = season.leaguePosition === 1;
   const club = season.clubName;
   const tableRows = leagueTableRowsToShow(season);
-  const leagueName = leagueNameFor(season.clubTier, country);
+  const leagueName = leagueNameFor(season.clubTier, season.clubCountry);
+  // "country" é a NACIONALIDADE (fixa) — season.clubCountry é onde o CLUBE joga agora,
+  // pode divergir depois de uma transferência internacional (roadmap pós-§9).
+  const abroad = season.clubCountry !== country;
   const injuryNote = INJURY_LABEL[season.injury];
   const note = moraleNote(season);
   const reqNote = requestNote(season);
@@ -603,6 +630,7 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
       <div className="season-tag">Resumo · {season.age} anos · Overall {season.overall} · {club}</div>
       <div className="headline">{champion ? "Campeão" : "Temporada"} no {club}</div>
       <div className="body">
+        {abroad && <>🌍 Jogando fora do país — {leagueName} ({season.clubCountry}). </>}
         {season.recoveringFromInjury && <>🩹 Ainda sentindo os efeitos da lesão grave da temporada passada — ritmo abaixo do normal. </>}
         {injuryNote && <>{injuryNote} </>}
         {champion ? `Campeão do ${leagueName}! ` : `Terminou o ${leagueName} em ${season.leaguePosition}º lugar. `}
@@ -701,7 +729,7 @@ function ContractChoiceClip({ choice, onChoose }: {
       <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
         {choice.proposals.map((p, i) => (
           <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
-            {p.upgrade ? "⬆️ " : ""}Assinar com {p.clubName}
+            {p.upgrade ? "⬆️ " : ""}Assinar com {p.clubName} ({p.country})
           </button>
         ))}
         <button className="btn-mini decline" onClick={() => onChoose(-1)}>{declineLabel}</button>

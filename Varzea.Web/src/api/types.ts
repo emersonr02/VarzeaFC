@@ -66,6 +66,9 @@ export interface SeasonResult {
   clubTier: number;
   // Nome do clube real (Roadmap pós-§9) — vem de clubs.json, nunca gerado no front.
   clubName: string;
+  // País do CLUBE nesta temporada (roadmap pós-§9, transferência internacional) — NUNCA
+  // a nacionalidade do jogador (essa é fixa, escolhida no Setup, e não vem por temporada).
+  clubCountry: string;
   apps: number;
   goals: number;
   assists: number;
@@ -156,6 +159,9 @@ export interface ContractProposalOption {
   // nunca tinha sido espelhado aqui, então o front continuava usando clubFor() (nome
   // 100% inventado) pra mostrar o botão da proposta.
   clubName: string;
+  // País do clube da proposta (roadmap pós-§9, transferência internacional) — quase
+  // sempre o país onde o jogador já está; raramente outro (a "grande" oferta de fora).
+  country: string;
 }
 
 export interface PendingContractChoice {

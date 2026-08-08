@@ -228,6 +228,12 @@ public sealed class CareerSimulator
         // uso junto de parentTier mais abaixo; precisa ser o MESMO clube de antes do
         // empréstimo, não um novo sorteio no mesmo tier.
         string parentClubName = "";
+        // País do CLUBE (roadmap pós-§9, transferência internacional) — separado de
+        // `country` (nacionalidade, usada só pra seleção/prêmios individuais Sul-
+        // Americanos e NUNCA muda). Começa igual à nacionalidade; só diverge depois de
+        // uma proposta internacional aceita (ver bloco de aceite de proposta abaixo).
+        string clubCountry = recipe.Country;
+        var clubCountryRules = country;
         // Índice de PendingContractChoice (Roadmap §9 Bloco 3, corte de escopo fechado —
         // "1+ propostas"; desde "propostas de mais clubes" no roadmap pós-§9, é o ÚNICO
         // índice de proposta que existe, dentro ou fora do ciclo de contrato) — indexando
@@ -463,7 +469,7 @@ public sealed class CareerSimulator
                         parentTier = tier;
                         parentClubName = clubName;
                         tier = Math.Max(1, tier - 1);
-                        clubName = _clubs.PickClub(recipe.Country, tier, rng);
+                        clubName = _clubs.PickClub(clubCountry, tier, rng);
                     }
                     break;
                 case SeasonRequestKind.RequestPromiseTitle:
@@ -520,7 +526,7 @@ public sealed class CareerSimulator
                 // ficam no valor padrão — a temporada nunca chegou lá.
                 result.Timeline.Add(new SeasonResult
                 {
-                    Age = age, Overall = overall, ClubTier = tier, ClubName = clubName,
+                    Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry,
                     Injury = injury, LeaguePosition = 20,
                     TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                     IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
@@ -566,9 +572,9 @@ public sealed class CareerSimulator
             // clubes da MESMA divisão do jogador jogam pontos corridos entre si; a
             // força do próprio jogador nessa tabela é a força de base do clube +
             // perf (bom o bastante pra puxar o time, ruim o bastante pra afundar).
-            var rivals = _clubs.LeagueRivals(recipe.Country, tier, clubName);
-            double ownStrength = _clubs.BaseStrength(recipe.Country, clubName) + perf;
-            var (leaguePosition, leagueTable) = SimulateLeagueTable(clubName, ownStrength, rivals, recipe.Country, rng);
+            var rivals = _clubs.LeagueRivals(clubCountry, tier, clubName);
+            double ownStrength = _clubs.BaseStrength(clubCountry, clubName) + perf;
+            var (leaguePosition, leagueTable) = SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng);
 
             // --- ACESSO / REBAIXAMENTO (roadmap pós-§9) ---
             // Grandes (tier 5) ficam de fora — lista curada de clubes tradicionalmente
@@ -592,7 +598,7 @@ public sealed class CareerSimulator
 
             var season = new SeasonResult
             {
-                Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, Apps = apps,
+                Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry, Apps = apps,
                 Promoted = promoted, Relegated = relegated,
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
@@ -604,7 +610,7 @@ public sealed class CareerSimulator
             // --- LIGA ---
             if (season.LeaguePosition == 1)
             {
-                var kind = country.LeagueGrade switch
+                var kind = clubCountryRules.LeagueGrade switch
                 {
                     3 => TitleKind.LeagueTop5,
                     2 => TitleKind.LeagueMid,
@@ -693,7 +699,7 @@ public sealed class CareerSimulator
             // chance é multiplicada por um fator << 1. Como a Bola de Ouro só concorre
             // quem entrou na Equipe do Ano, o efeito composto já deixa a Bola de Ouro
             // "quase nunca" pra ligas de grade 1 sem precisar de outro gate separado.
-            double leagueGradeAwardFactor = country.LeagueGrade switch
+            double leagueGradeAwardFactor = clubCountryRules.LeagueGrade switch
             {
                 3 => 1.00,
                 2 => 0.35,
@@ -795,7 +801,7 @@ public sealed class CareerSimulator
                     // Jogador já avisou (painel Contrato, roadmap pós-§9) que quer sair
                     // quando o contrato vencesse — pula a rolagem de renovação e vai
                     // direto pro caminho de "não renovou".
-                    contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng);
+                    contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng);
                     wantsToLeaveAtContractEnd = false;
                 }
                 else
@@ -811,7 +817,7 @@ public sealed class CareerSimulator
                     }
                     else
                     {
-                        contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng);
+                        contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng);
                     }
                 }
             }
@@ -842,7 +848,7 @@ public sealed class CareerSimulator
                 else if (perf > 14 && tier < 5 && rng.Chance(0.45)) { triggered = true; direction = true; }
                 else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30)) { triggered = true; direction = false; }
                 else if (tier < 5 && rng.Chance(scoutingChance)) { triggered = true; direction = true; }
-                if (triggered) contractProposals = GenerateContractProposals(recipe.Country, tier, overall, target, rng, direction);
+                if (triggered) contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng, direction);
             }
 
             bool accepted = false;
@@ -871,6 +877,13 @@ public sealed class CareerSimulator
                     // clube mostrado ao jogador na hora de escolher poderia divergir do
                     // clube realmente aplicado (bug real encontrado e corrigido).
                     clubName = contractProposals[choice].ClubName;
+                    // Transferência internacional (roadmap pós-§9, "não vi uma partida
+                    // com transferências para outra liga") — troca o país do CLUBE (não
+                    // a nacionalidade, essa nunca muda) quando a proposta aceita vem de
+                    // fora; clubCountryRules segue junto pra LeagueGrade bater com a
+                    // liga nova a partir da temporada seguinte.
+                    clubCountry = contractProposals[choice].Country;
+                    clubCountryRules = _rules.Countries[clubCountry];
                     // Transferência aceita muda o clube JÁ (efetivo na temporada seguinte,
                     // igual a qualquer outra mudança de clube) — cancela um acesso/
                     // rebaixamento automático que essa mesma temporada tenha disparado,
@@ -978,6 +991,7 @@ public sealed class CareerSimulator
             var finished = new SeasonResult
             {
                 Age = season.Age, Overall = season.Overall, ClubTier = season.ClubTier, ClubName = season.ClubName,
+                ClubCountry = season.ClubCountry,
                 Apps = season.Apps, Goals = season.Goals, Assists = season.Assists,
                 Tackles = season.Tackles, CleanSheets = season.CleanSheets,
                 LeaguePosition = season.LeaguePosition, LeagueTable = season.LeagueTable, Injury = season.Injury,
@@ -1057,6 +1071,14 @@ public sealed class CareerSimulator
     /// ContinentalPrimary na primeira tentativa desta feature, ver HANDOFF). Null (a
     /// não-renovação de contrato, que não tem essa noção de "gatilho") mantém o cálculo
     /// original.</param>
+    /// <summary>Chance de a proposta PRIMÁRIA (nunca a lateral/esticada) vir de outro
+    /// país — só cogitada quando já se está num clube grande (tier 5) buscando outro
+    /// tier 5 (upgrade lateral de prestígio: domesticamente não dá mais pra "subir").
+    /// Roadmap pós-§9: "até agora não vi uma partida com transferências para outra
+    /// liga" — o motor nunca cruzava fronteira nenhuma antes disso.</summary>
+    private const double InternationalProposalChance = 0.22;
+    private const int InternationalOverallThreshold = 80;
+
     private List<ContractProposalOption> GenerateContractProposals(
         string country, int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null)
     {
@@ -1064,18 +1086,35 @@ public sealed class CareerSimulator
 
         bool qualifiesUpgrade = forceDirection ?? (overall >= target);
         int primaryTier = Math.Clamp(tier + (qualifiesUpgrade ? 1 : -1), 1, 5);
+
+        // Só a proposta PRIMÁRIA pode ser internacional — lateral/esticada continuam
+        // domésticas, mantendo a maior parte da mecânica já testada intocada. Não exige
+        // qualifiesUpgrade (bug encontrado nesta sessão: o target do tier 5 é 92 — como
+        // "subir" além do tier 5 não existe, qualifiesUpgrade ficava sempre falso lá em
+        // cima e a transferência internacional nunca disparava de verdade). Ir pra fora
+        // é sempre um "upgrade" de prestígio por construção, não uma repetição do
+        // cálculo doméstico de tier+1/tier-1.
+        string primaryCountry = country;
+        bool international = false;
+        if (tier == 5 && overall >= InternationalOverallThreshold && rng.Chance(InternationalProposalChance))
+        {
+            var foreign = _clubs.PickForeignCountry(country, rng);
+            if (foreign is not null) { primaryCountry = foreign; primaryTier = 5; international = true; }
+        }
+
         // Clube sorteado AQUI, na geração — o mesmo nome mostrado na proposta é o que
         // vira o clube real se aceita (ver aceite mais abaixo). Sem isto, o front tinha
         // que inventar um nome cosmético pra mostrar (bug real encontrado: "aceitei
         // proposta do Porto Imperial e fui parar no RB Leipzig" — nomes inventados sem
         // nenhuma relação com o clube de verdade sorteado só na hora de aceitar).
-        proposals.Add(new ContractProposalOption(primaryTier, qualifiesUpgrade, _clubs.PickClub(country, primaryTier, rng)));
+        proposals.Add(new ContractProposalOption(primaryTier, international || qualifiesUpgrade,
+            _clubs.PickClub(primaryCountry, primaryTier, rng), primaryCountry));
 
         // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) —
         // chance cresce com o overall, representando mais clubes de olho num jogador bom.
         double lateralChance = Math.Clamp((overall - 65) / 45.0, 0.15, 0.85);
         if (rng.Chance(lateralChance) && primaryTier != tier)
-            proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng)));
+            proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng), country));
 
         // Terceira proposta: "esticada" — só pra quem está muito bem, um clube ainda
         // maior que o da proposta principal.
@@ -1083,7 +1122,7 @@ public sealed class CareerSimulator
         {
             int stretchTier = Math.Clamp(tier + 1, 1, 5);
             if (!proposals.Any(p => p.ClubTier == stretchTier))
-                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng)));
+                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng), country));
         }
 
         return proposals;

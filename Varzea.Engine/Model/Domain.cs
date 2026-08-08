@@ -94,6 +94,11 @@ public sealed class SeasonResult
     /// <summary>Nome do clube real (Roadmap pós-§9) que o jogador defendeu esta
     /// temporada — vem de ClubDirectory (clubs.json), nunca gerado no front.</summary>
     public string ClubName { get; init; } = "";
+    /// <summary>País do CLUBE nesta temporada (roadmap pós-§9, transferência
+    /// internacional) — NUNCA a nacionalidade do jogador (essa é fixa,
+    /// CareerRecipe.Country, e não muda de temporada pra temporada). Começa igual à
+    /// nacionalidade; só diverge depois de uma proposta internacional aceita.</summary>
+    public string ClubCountry { get; init; } = "";
     public int Apps { get; init; }
     public int Goals { get; init; }
     public int Assists { get; init; }
@@ -247,7 +252,10 @@ public sealed record PendingTransferOffer(
 /// ClubName é o clube REAL já sorteado no momento em que a proposta é gerada — o mesmo
 /// nome mostrado ao jogador é o que é aplicado se ele aceitar (nunca um re-sorteio
 /// silencioso na hora de aceitar, que já causou bug de "aceitei X e fui parar em Y").</summary>
-public sealed record ContractProposalOption(int ClubTier, bool Upgrade, string ClubName);
+/// <summary>Country: país do clube da proposta — quase sempre o mesmo país onde o
+/// jogador já está (roadmap pós-§9), exceto pela rara proposta internacional (só a
+/// proposta PRIMÁRIA pode vir de fora, ver GenerateContractProposals).</summary>
+public sealed record ContractProposalOption(int ClubTier, bool Upgrade, string ClubName, string Country);
 
 /// <summary>
 /// 1-3 propostas simultâneas — na não-renovação de contrato (natural ou via

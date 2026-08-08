@@ -161,4 +161,47 @@ public class ClubAndLeagueTests
         Assert.True(sawPromotion, "nenhuma promoção observada nas seeds/países testados");
         Assert.True(sawRelegation, "nenhum rebaixamento observado nas seeds/países testados");
     }
+
+    /// <summary>Transferência internacional (roadmap pós-§9, "não vi uma partida com
+    /// transferências para outra liga"): ClubCountry pode divergir de Recipe.Country
+    /// (nacionalidade, nunca muda) depois de uma proposta primária internacional
+    /// aceita — sempre com ClubTier=5 (só cogitada saindo de um clube grande pra
+    /// outro). Aceita sempre a proposta 0 (a primária) pra maximizar a chance de pegar
+    /// uma internacional quando ela é gerada.</summary>
+    [Fact]
+    public void InternationalTransfer_ChangesClubCountry_ButNeverNationality_AndTakesEffectNextSeason()
+    {
+        var sim = new CareerSimulator(Rules, Clubs);
+        bool sawInternational = false;
+
+        foreach (var country in new[] { "Brasil", "Alemanha", "Inglaterra", "Espanha", "Argentina" })
+        {
+            for (ulong seed = 1; seed <= 100 && !sawInternational; seed++)
+            {
+                var recipe = BaseRecipe(seed, country) with
+                {
+                    ContractChoices = Enumerable.Repeat(0, 30).ToArray()
+                };
+                var result = sim.SimulateCareer(recipe);
+                var timeline = result.Timeline;
+
+                for (int i = 0; i < timeline.Count; i++)
+                {
+                    var s = timeline[i];
+                    if (s.ClubCountry != country)
+                    {
+                        sawInternational = true;
+                        Assert.Equal(5, s.ClubTier);
+                        // A temporada ANTERIOR (se existir) ainda tinha que estar no
+                        // país de origem — a mudança leva 1 temporada pra valer, mesmo
+                        // padrão de qualquer outra troca de clube no motor.
+                        if (i > 0) Assert.Equal(country, timeline[i - 1].ClubCountry);
+                        break;
+                    }
+                }
+            }
+        }
+
+        Assert.True(sawInternational, "nenhuma transferência internacional observada nas seeds/países testados");
+    }
 }
