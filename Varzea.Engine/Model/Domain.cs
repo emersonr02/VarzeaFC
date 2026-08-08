@@ -218,14 +218,13 @@ public sealed class CareerResult
 /// Upgrade=true significa que aceitar sobe um tier; false, que aceitar desce um tier
 /// (uma saída de uma fase ruim, não necessariamente rebaixamento).
 /// </summary>
+/// <summary>NUNCA mais retornado por RunCareer (ver PendingContractChoice) — desde
+/// "propostas de mais clubes" (roadmap pós-§9), toda proposta (dentro ou fora do ciclo
+/// de contrato) vira PendingContractChoice. Tipo mantido só pelo contrato de API já
+/// publicado; segue candidato a remoção completa numa limpeza futura.</summary>
 public sealed record PendingTransferOffer(
     int Age, int Overall, int ClubTier, bool Upgrade,
     int Goals, int Assists, int Tackles, int CleanSheets, int LeaguePosition,
-    /// <summary>Veio de um contrato vencido sem renovação (Roadmap §9 Bloco 3), não de
-    /// uma oferta de fora do ciclo — muda a narrativa no front. Desde o corte de escopo
-    /// "múltiplas propostas" fechado, a não-renovação sempre usa PendingContractChoice
-    /// em vez disto — este campo fica sempre false na prática, mantido por
-    /// compatibilidade com o resto do fluxo de oferta única (fora do ciclo).</summary>
     bool ContractExpiring = false);
 
 /// <summary>Uma proposta concreta entre as N que aparecem quando o contrato vence sem
@@ -234,12 +233,14 @@ public sealed record PendingTransferOffer(
 public sealed record ContractProposalOption(int ClubTier, bool Upgrade);
 
 /// <summary>
-/// 1-3 propostas simultâneas quando o contrato vence sem renovação (natural ou via
-/// RequestLeaveAtContractEnd) — o jogador escolhe uma (por índice, CareerRecipe.
-/// ContractChoices) ou recusa todas e fica de contrato curto de "prova". Ofertas de FORA
-/// do ciclo de contrato continuam usando PendingTransferOffer (uma só), sem mudança.
+/// 1-3 propostas simultâneas — na não-renovação de contrato (natural ou via
+/// RequestLeaveAtContractEnd) OU fora do ciclo de contrato (Roadmap pós-§9, "propostas
+/// de mais clubes" — antes usava PendingTransferOffer, uma proposta só). O jogador
+/// escolhe uma (por índice, CareerRecipe.ContractChoices) ou recusa todas.
+/// ContractExpiring distingue a narrativa no front (contrato vencido vs. assédio de
+/// fora) — quando false, recusar todas não afeta o contrato atual em nada.
 /// </summary>
-public sealed record PendingContractChoice(int Age, int Overall, IReadOnlyList<ContractProposalOption> Proposals);
+public sealed record PendingContractChoice(int Age, int Overall, IReadOnlyList<ContractProposalOption> Proposals, bool ContractExpiring);
 
 /// <summary>
 /// Resultado de rodar a carreira até a próxima decisão pendente, ou até o fim.

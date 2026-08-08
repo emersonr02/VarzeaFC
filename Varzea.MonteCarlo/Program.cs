@@ -38,7 +38,13 @@ public static class Program
                 DraftPicks: picks,
                 Position: positions[pick.NextInt(0, positions.Length - 1)],
                 TransferChoices: Enumerable.Range(0, 12).Select(_ => pick.Chance(0.8)).ToArray(),
-                RulesetVersion: rules.Version
+                RulesetVersion: rules.Version,
+                // Roadmap pós-§9, "propostas de mais clubes": toda proposta (dentro ou
+                // fora do ciclo de contrato) agora usa ContractChoices, não mais
+                // TransferChoices — sem isso, a amostra recusaria 100% das propostas
+                // (índice sempre fora dos limites de um array vazio), o que já derrubou
+                // a progressão de tier inteira uma vez (ContinentalPrimary foi a 0%).
+                ContractChoices: Enumerable.Range(0, 20).Select(_ => pick.Chance(0.8) ? 0 : -1).ToArray()
             );
 
             sample.Add(sim.SimulateCareer(recipe));

@@ -188,14 +188,21 @@ public class SeasonRequestTests
         var progress1 = sim.AdvanceCareer(baseRecipe with { SeasonRequests = call1Requests });
         Assert.True(progress1.AwaitingDecision, "RequestLeaveNow deveria forçar uma oferta garantida na primeira temporada");
 
-        int consumedSlots = progress1.Result.Timeline.Count + (progress1.PendingOffer is not null ? 1 : 0);
+        int consumedSlots = progress1.Result.Timeline.Count + (progress1.AwaitingDecision ? 1 : 0);
         var afterCall1 = call1Requests.Length < consumedSlots
             ? call1Requests.Concat(Enumerable.Repeat(SeasonRequestKind.None, consumedSlots - call1Requests.Length)).ToArray()
             : call1Requests;
         Assert.Equal(SeasonRequestKind.RequestLeaveNow, Assert.Single(afterCall1));
 
-        // Chamada 2: espelha POST /careers/advance {decision:false} — SeasonRequests não muda.
-        var progress2 = sim.AdvanceCareer(baseRecipe with { TransferChoices = new[] { false }, SeasonRequests = afterCall1 });
+        // Roadmap pós-§9, "propostas de mais clubes": a busca garantida de RequestLeaveNow
+        // agora também passa pelo caminho de múltiplas propostas (mesmo mecanismo da
+        // não-renovação de contrato) — pausa como PendingContractChoice, não mais como
+        // PendingTransferOffer de proposta única.
+        Assert.NotNull(progress1.PendingContractChoice);
+
+        // Chamada 2: espelha POST /careers/advance {contractChoiceIndex:0} — aceita a
+        // primeira proposta. SeasonRequests não muda.
+        var progress2 = sim.AdvanceCareer(baseRecipe with { ContractChoices = new[] { 0 }, SeasonRequests = afterCall1 });
         var firstSeason = progress2.Result.Timeline[0];
         Assert.Equal(SeasonRequestKind.RequestLeaveNow, firstSeason.RequestMade);
         Assert.True(firstSeason.RequestGranted);
@@ -230,31 +237,37 @@ public class SeasonRequestTests
     {
         var sim = new CareerSimulator(Rules, Clubs);
         var alwaysLeave = Enumerable.Repeat(SeasonRequestKind.RequestLeaveAtContractEnd, 25).ToArray();
-        // TransferChoices vazio (nunca aceita nenhuma oferta fora do ciclo) — aceitar
-        // uma dessas TAMBÉM reseta o relógio do contrato (mesmo bloco de reset do
-        // contrato natural, ver CareerSimulator), o que empurraria a primeira expiração
-        // pra muito mais tarde na carreira (jogador já veterano) e faria as durações de
-        // aceitar/recusar coincidirem por coincidência de faixa etária, não pela
-        // mecânica que este teste quer provar.
-        var baseRecipe = BaseRecipe(1) with { SeasonRequests = alwaysLeave, TransferChoices = Array.Empty<bool>() };
+        var baseRecipe = BaseRecipe(1) with { SeasonRequests = alwaysLeave };
 
-        var accepted = sim.SimulateCareer(baseRecipe with { ContractChoices = Enumerable.Repeat(0, 25).ToArray() });
-        var declined = sim.SimulateCareer(baseRecipe with { ContractChoices = Enumerable.Repeat(-1, 25).ToArray() });
-
-        // A duração do PRIMEIRO contrato (NextContractDuration, sorteado antes de
-        // qualquer escolha) depende só de idade/pico/aposentadoria — então a primeira
-        // expiração cai na mesma temporada nas duas carreiras. Dali em diante as
-        // durações divergem (recusar sempre gera contrato curto de "prova", ver
-        // CareerSimulator), então só a primeira expiração é comparável 1:1.
+        // Recusar TUDO (-1) nunca reseta o relógio do contrato (nem propostas fora do
+        // ciclo, nem a da não-renovação) — a primeira expiração natural cai exatamente
+        // onde NextContractDuration decidiu, sem interferência. Roda essa linha de base
+        // primeiro pra descobrir quantas propostas (dentro ou fora do ciclo — Roadmap
+        // pós-§9, "propostas de mais clubes", ambas consomem o mesmo índice) foram
+        // consumidas até lá.
+        var declined = sim.SimulateCareer(baseRecipe with { ContractChoices = Enumerable.Repeat(-1, 30).ToArray() });
         var declinedExpiringIdx = Enumerable.Range(0, declined.Timeline.Count)
             .Where(i => declined.Timeline[i].ContractExpiring).ToList();
+        Assert.NotEmpty(declinedExpiringIdx);
+        int first = declinedExpiringIdx[0];
+
+        // HadTransferOffer marca toda temporada que consumiu um índice de
+        // ContractChoices (proposta dentro OU fora do ciclo) — contar até "first"
+        // (inclusive) dá exatamente quantas decisões vieram antes da 1ª expiração.
+        int consumedByFirst = declined.Timeline.Take(first + 1).Count(s => s.HadTransferOffer);
+        Assert.True(consumedByFirst > 0, "a temporada da 1ª expiração deveria ter gerado uma proposta");
+
+        // Aceita SÓ a última proposta antes/na 1ª expiração (a da não-renovação em si);
+        // todas as anteriores (fora do ciclo, se houver) continuam recusadas — isso
+        // garante que a 1ª expiração caia na MESMA temporada nas duas carreiras, sem
+        // nenhuma aceitação prévia resetar o relógio do contrato antes da hora.
+        var acceptOnlyLast = Enumerable.Repeat(-1, consumedByFirst - 1).Append(0)
+            .Concat(Enumerable.Repeat(-1, 29 - consumedByFirst)).ToArray();
+        var accepted = sim.SimulateCareer(baseRecipe with { ContractChoices = acceptOnlyLast });
         var acceptedExpiringIdx = Enumerable.Range(0, accepted.Timeline.Count)
             .Where(i => accepted.Timeline[i].ContractExpiring).ToList();
-        Assert.NotEmpty(declinedExpiringIdx);
         Assert.NotEmpty(acceptedExpiringIdx);
-        Assert.Equal(declinedExpiringIdx[0], acceptedExpiringIdx[0]);
-
-        int first = declinedExpiringIdx[0];
+        Assert.Equal(first, acceptedExpiringIdx[0]);
         int tierBeforeFirst = first > 0 ? declined.Timeline[first - 1].ClubTier : declined.Timeline[first].ClubTier;
 
         // Recusar mantém o tier (contrato curto de "prova")...

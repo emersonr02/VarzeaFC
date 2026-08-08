@@ -514,18 +514,24 @@ function ContractChoiceClip({ choice, clubFor, onChoose }: {
   clubFor: (t: number) => string;
   onChoose: (index: number) => void;
 }) {
+  const tag = choice.contractExpiring ? `Fim de contrato · ${choice.age} anos` : `Sondagem de mercado · ${choice.age} anos`;
+  const headline = choice.contractExpiring ? "Seu contrato venceu e o clube não renovou" : "Outros clubes vieram te sondar";
+  const body = choice.contractExpiring
+    ? "Chegaram propostas de fora. Escolha uma pra assinar ou recuse todas e tente provar seu valor num contrato curto."
+    : "Você ainda está sob contrato, mas o interesse é real. Escolha uma proposta pra sair agora ou recuse todas e siga onde está.";
+  const declineLabel = choice.contractExpiring ? "Recusar todas — contrato curto de prova" : "Recusar todas — seguir no clube atual";
   return (
     <div className="clip clip-transfer">
-      <div className="season-tag">Fim de contrato · {choice.age} anos</div>
-      <div className="headline">Seu contrato venceu e o clube não renovou</div>
-      <div className="body">Chegaram propostas de fora. Escolha uma pra assinar ou recuse todas e tente provar seu valor num contrato curto.</div>
+      <div className="season-tag">{tag}</div>
+      <div className="headline">{headline}</div>
+      <div className="body">{body}</div>
       <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
         {choice.proposals.map((p, i) => (
           <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
             {p.upgrade ? "⬆️ " : ""}Assinar com {clubFor(p.clubTier)}
           </button>
         ))}
-        <button className="btn-mini decline" onClick={() => onChoose(-1)}>Recusar todas — contrato curto de prova</button>
+        <button className="btn-mini decline" onClick={() => onChoose(-1)}>{declineLabel}</button>
       </div>
     </div>
   );

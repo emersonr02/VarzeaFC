@@ -148,6 +148,10 @@ export interface PendingContractChoice {
   age: number;
   overall: number;
   proposals: ContractProposalOption[];
+  // Roadmap pós-§9, "propostas de mais clubes": agora também aparece fora do ciclo de
+  // contrato (scouting/desempenho/moral) — false nesses casos, true só quando o
+  // contrato realmente venceu sem renovação.
+  contractExpiring: boolean;
 }
 
 export interface AdvanceResponse {
