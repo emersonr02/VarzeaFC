@@ -98,6 +98,12 @@ public sealed class CareerSimulator
     /// menor — é um efeito de UMA temporada, não acumulado.</summary>
     private const double InjuryRecoveryPerfPenalty = 6.0;
 
+    /// <summary>Acesso/rebaixamento (roadmap pós-§9): quantas vagas de subida/descida em
+    /// cada ponta da tabela — arbitrário, só precisa ficar plausível pro tamanho normal
+    /// de divisão em clubs.json (~18-20 clubes).</summary>
+    private const int PromotionSpots = 2;
+    private const int RelegationSpots = 4;
+
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
         var working = new List<Legend>(pool);
@@ -280,6 +286,13 @@ public sealed class CareerSimulator
         // parentTier pro empréstimo, um efeito de exatamente uma temporada.
         bool recoveringFromSevereInjury = false;
 
+        // Acesso/rebaixamento (roadmap pós-§9): -1 = nenhuma mudança automática de tier
+        // pendente. Setado no fim da temporada (depois da tabela sair), consumido no
+        // TOPO da seguinte — mesmo padrão de parentTier, mas com prioridade MENOR: um
+        // empréstimo restaurando o clube dono do contrato sempre vence (ver
+        // "if (parentTier >= 0) ... else if (pendingAutoTier >= 0)" abaixo).
+        int pendingAutoTier = -1;
+
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
             // Uma chamada = uma temporada nova (ver AdvanceCareer) — pausa ANTES de
@@ -300,6 +313,13 @@ public sealed class CareerSimulator
                 tier = parentTier;
                 clubName = parentClubName;
                 parentTier = -1;
+                pendingAutoTier = -1; // empréstimo termina, acesso/rebaixamento do clube emprestado não conta
+            }
+            else if (pendingAutoTier >= 0)
+            {
+                tier = pendingAutoTier;
+                clubName = _clubs.PickClub(recipe.Country, tier, rng);
+                pendingAutoTier = -1;
             }
 
             // curva de evolução: cresce em direção ao potencial, estabiliza, decai
@@ -545,9 +565,30 @@ public sealed class CareerSimulator
             double ownStrength = _clubs.BaseStrength(recipe.Country, clubName) + perf;
             var (leaguePosition, leagueTable) = SimulateLeagueTable(clubName, ownStrength, rivals, recipe.Country, rng);
 
+            // --- ACESSO / REBAIXAMENTO (roadmap pós-§9) ---
+            // Grandes (tier 5) ficam de fora — lista curada de clubes tradicionalmente
+            // fortes, só muda pra lá via proposta de transferência (já existente), nunca
+            // por tabela. tier 1-2 (divisão 2) top 2 sobe pro chão da divisão 1 (tier 3);
+            // tier 3-4 (divisão 1, sem contar os grandes) fundo 4 desce pro topo da
+            // divisão 2 (tier 2) — aplica no TOPO da temporada SEGUINTE (mesmo padrão de
+            // parentTier), nunca no meio desta. leagueTable.Count é o total de clubes na
+            // tabela (rivais + o próprio).
+            bool promoted = false, relegated = false;
+            if (tier is 1 or 2 && leaguePosition <= PromotionSpots)
+            {
+                pendingAutoTier = 3;
+                promoted = true;
+            }
+            else if (tier is 3 or 4 && leaguePosition > leagueTable.Count - RelegationSpots)
+            {
+                pendingAutoTier = 2;
+                relegated = true;
+            }
+
             var season = new SeasonResult
             {
                 Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, Apps = apps,
+                Promoted = promoted, Relegated = relegated,
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
                 LeaguePosition = leaguePosition,
@@ -818,6 +859,11 @@ public sealed class CareerSimulator
                     // clube mostrado ao jogador na hora de escolher poderia divergir do
                     // clube realmente aplicado (bug real encontrado e corrigido).
                     clubName = contractProposals[choice].ClubName;
+                    // Transferência aceita muda o clube JÁ (efetivo na temporada seguinte,
+                    // igual a qualquer outra mudança de clube) — cancela um acesso/
+                    // rebaixamento automático que essa mesma temporada tenha disparado,
+                    // senão o topo do próximo loop sobrescreveria o clube recém-aceito.
+                    pendingAutoTier = -1;
                 }
                 // choice inválido/-1: accepted fica false, tier não muda aqui — o bloco de
                 // reinício de contrato mais abaixo já trata "recusou todas" como o
@@ -934,7 +980,8 @@ public sealed class CareerSimulator
                 Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
                 PromisedTitle = promisedTitle, PromiseFulfilled = promiseFulfilled,
                 RequestMade = request, RequestGranted = requestGranted,
-                RecoveringFromInjury = season.RecoveringFromInjury
+                RecoveringFromInjury = season.RecoveringFromInjury,
+                Promoted = season.Promoted, Relegated = season.Relegated
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);

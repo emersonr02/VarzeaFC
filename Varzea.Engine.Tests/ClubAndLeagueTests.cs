@@ -115,4 +115,46 @@ public class ClubAndLeagueTests
             Assert.Equal(1, occurrences);
         }
     }
+
+    /// <summary>Acesso/rebaixamento (roadmap pós-§9): o efeito (tier mudou) só aparece
+    /// na temporada SEGUINTE à marcada Promoted/Relegated — mesmo "delay de 1 temporada"
+    /// de qualquer outra mudança de clube no motor. Varre várias seeds/países pra achar
+    /// pelo menos uma ocorrência de cada em carreiras longas o bastante.</summary>
+    [Fact]
+    public void PromotionAndRelegation_TakeEffectOnlyTheFollowingSeason_AndNeverTouchGrandes()
+    {
+        var sim = new CareerSimulator(Rules, Clubs);
+        bool sawPromotion = false, sawRelegation = false;
+
+        foreach (var country in new[] { "Brasil", "Alemanha", "Inglaterra", "Espanha", "Itália" })
+        {
+            for (ulong seed = 1; seed <= 15; seed++)
+            {
+                var result = sim.SimulateCareer(BaseRecipe(seed, country));
+                for (int i = 0; i < result.Timeline.Count - 1; i++)
+                {
+                    var season = result.Timeline[i];
+                    var next = result.Timeline[i + 1];
+                    // Nunca os dois ao mesmo tempo, e nunca fora do intervalo de tier
+                    // coberto por acesso/rebaixamento (grandes/tier 5 ficam de fora).
+                    Assert.False(season.Promoted && season.Relegated);
+                    Assert.True(season.ClubTier is >= 1 and <= 4 || !(season.Promoted || season.Relegated));
+
+                    if (season.Promoted && !next.OnLoan)
+                    {
+                        sawPromotion = true;
+                        Assert.True(next.ClubTier is 3 or 4 or 5, "promoção devia levar a um tier de 1ª divisão ou acima");
+                    }
+                    if (season.Relegated && !next.OnLoan)
+                    {
+                        sawRelegation = true;
+                        Assert.True(next.ClubTier is 1 or 2, "rebaixamento devia levar a um tier de 2ª divisão");
+                    }
+                }
+            }
+        }
+
+        Assert.True(sawPromotion, "nenhuma promoção observada nas seeds/países testados");
+        Assert.True(sawRelegation, "nenhum rebaixamento observado nas seeds/países testados");
+    }
 }

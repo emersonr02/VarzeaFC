@@ -166,6 +166,14 @@ public sealed class SeasonResult
     /// reflete o clube emprestado; este campo é só pro front narrar a diferença.</summary>
     public bool OnLoan { get; init; }
 
+    // --- Acesso / rebaixamento (roadmap pós-§9) ---
+    /// <summary>True quando ESTA temporada (a que acabou de ser jogada) terminou dentro
+    /// da zona de acesso/rebaixamento — o efeito real (mudança de clube/tier) só aparece
+    /// na temporada SEGUINTE (ClubTier/ClubName dela), mesmo padrão de "delay de 1
+    /// temporada" já usado em toda mudança de clube no motor.</summary>
+    public bool Promoted { get; init; }
+    public bool Relegated { get; init; }
+
     // --- Fadiga (painel Saúde, roadmap pós-§9) ---
     /// <summary>Fadiga acumulada ao FIM desta temporada (0..~1.2) — sistema sempre
     /// ativo, não depende de nenhum SeasonRequest ter sido feito.</summary>

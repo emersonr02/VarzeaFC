@@ -270,10 +270,12 @@ public class SeasonRequestTests
             .Where(i => accepted.Timeline[i].ContractExpiring).ToList();
         Assert.NotEmpty(acceptedExpiringIdx);
         Assert.Equal(first, acceptedExpiringIdx[0]);
-        int tierBeforeFirst = first > 0 ? declined.Timeline[first - 1].ClubTier : declined.Timeline[first].ClubTier;
-
-        // Recusar mantém o tier (contrato curto de "prova")...
-        Assert.Equal(tierBeforeFirst, declined.Timeline[first].ClubTier);
+        // As duas carreiras rodaram com ContractChoices IDÊNTICOS até "first" (só a
+        // última decisão diverge) — então qualquer acesso/rebaixamento automático
+        // (roadmap pós-§9, independente de aceitar/recusar propostas) já aconteceu
+        // igual nas duas até aqui. O tier na temporada "first" tem que bater entre elas;
+        // só a temporada SEGUINTE é que diverge (só quem aceitou muda de clube).
+        Assert.Equal(accepted.Timeline[first].ClubTier, declined.Timeline[first].ClubTier);
 
         // ...e recusar sempre gera um contrato de no máximo 2 temporadas, enquanto
         // aceitar dá um contrato normal (NextContractDuration — 3+ temporadas nesta
