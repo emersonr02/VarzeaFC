@@ -1,0 +1,56 @@
+{
+  "_comment": "Clubes reais de 1a/2a divisao dos paises escolhiveis no draft (Roadmap pos-§9). Pesquisado via Wikipedia (temporada 2025-26 na maioria dos paises; Brasil 2026, Argentina 2026, Uruguai 2025 -- calendarios diferentes por pais). 'Grandes' sao os clubes tradicionalmente mais fortes/historicos de cada pais (candidatos a tier 5) -- curadoria por conhecimento geral de futebol, nao derivada de dados; o resto da divisao1/divisao2 ainda precisa de um mapeamento pra tier (ver Roadmap pos-§9, item 'clubes iniciais + tabela real da liga'). Nomes de clube mudam com o tempo (rebaixamento, patrocinio, fusao) -- revisar periodicamente.",
+  "version": "1.0.0",
+  "countries": {
+    "Brasil": {
+      "grandes": ["Flamengo", "Palmeiras", "Corinthians", "São Paulo", "Cruzeiro", "Grêmio", "Internacional", "Vasco da Gama", "Fluminense", "Botafogo"],
+      "divisao1": ["Athletico Paranaense", "Atlético Mineiro", "Bahia", "Botafogo", "Chapecoense", "Corinthians", "Coritiba", "Cruzeiro", "Flamengo", "Fluminense", "Grêmio", "Internacional", "Mirassol", "Palmeiras", "Red Bull Bragantino", "Remo", "Santos", "São Paulo", "Vasco da Gama", "Vitória"],
+      "divisao2": ["América Mineiro", "Athletic", "Atlético Goianiense", "Avaí", "Botafogo-SP", "Ceará", "CRB", "Criciúma", "Cuiabá", "Fortaleza", "Goiás", "Juventude", "Londrina", "Náutico", "Novorizontino", "Operário Ferroviário", "Ponte Preta", "São Bernardo", "Sport", "Vila Nova"]
+    },
+    "Argentina": {
+      "grandes": ["Boca Juniors", "River Plate", "Racing Club", "Independiente", "San Lorenzo", "Vélez Sarsfield", "Estudiantes (La Plata)", "Newell's Old Boys", "Rosario Central"],
+      "divisao1": ["Aldosivi", "Argentinos Juniors", "Atlético Tucumán", "Banfield", "Barracas Central", "Belgrano", "Boca Juniors", "Central Córdoba", "Defensa y Justicia", "Deportivo Riestra", "Estudiantes (La Plata)", "Estudiantes (Río Cuarto)", "Gimnasia y Esgrima (La Plata)", "Gimnasia y Esgrima (Mendoza)", "Huracán", "Independiente", "Independiente Rivadavia", "Instituto", "Lanús", "Newell's Old Boys", "Platense", "Racing Club", "River Plate", "Rosario Central", "San Lorenzo", "Sarmiento", "Talleres (Córdoba)", "Tigre", "Unión", "Vélez Sarsfield"],
+      "divisao2": ["Acassuso", "Agropecuario Argentino", "All Boys", "Almagro", "Almirante Brown", "Atlanta", "Atlético de Rafaela", "Central Norte", "Chacarita Juniors", "Chaco For Ever", "Ciudad de Bolívar", "Colegiales", "Colón", "Defensores de Belgrano", "Deportivo Madryn", "Deportivo Maipú", "Deportivo Morón", "Estudiantes (BA)", "Ferrocarril Midland", "Ferro Carril Oeste", "Gimnasia y Esgrima (J)", "Gimnasia y Tiro", "Godoy Cruz", "Güemes", "Los Andes", "Mitre (SdE)", "Nueva Chicago", "Patronato", "Quilmes", "Racing (C)", "San Martín (SJ)", "San Martín (T)", "San Miguel", "San Telmo", "Temperley", "Tristán Suárez"]
+    },
+    "Uruguai": {
+      "grandes": ["Peñarol", "Nacional", "Danubio", "Defensor Sporting"],
+      "divisao1": ["Boston River", "Cerro", "Cerro Largo", "Danubio", "Defensor Sporting", "Juventud", "Liverpool", "Miramar Misiones", "Montevideo City Torque", "Montevideo Wanderers", "Nacional", "Peñarol", "Plaza Colonia", "Progreso", "Racing", "River Plate"],
+      "divisao2": ["Albion", "Artigas", "Atenas", "Central Español", "Cerrito", "Colón", "Deportivo Maldonado", "Fénix", "La Luz", "Oriental", "Rampla Juniors", "Rentistas", "Tacuarembó", "Uruguay Montevideo"]
+    },
+    "Espanha": {
+      "grandes": ["Real Madrid", "Barcelona", "Atlético Madrid", "Sevilla", "Valencia", "Athletic Bilbao", "Real Sociedad", "Villarreal"],
+      "divisao1": ["Alavés", "Athletic Bilbao", "Atlético Madrid", "Barcelona", "Celta Vigo", "Elche", "Espanyol", "Getafe", "Girona", "Levante", "Mallorca", "Osasuna", "Rayo Vallecano", "Real Betis", "Real Madrid", "Real Oviedo", "Real Sociedad", "Sevilla", "Valencia", "Villarreal"],
+      "divisao2": ["Albacete", "Almería", "Andorra", "Burgos", "Cádiz", "Castellón", "Ceuta", "Córdoba", "Cultural Leonesa", "Deportivo La Coruña", "Eibar", "Granada", "Huesca", "Las Palmas", "Leganés", "Málaga", "Mirandés", "Racing Santander", "Real Sociedad B", "Sporting Gijón", "Valladolid", "Zaragoza"]
+    },
+    "Inglaterra": {
+      "grandes": ["Manchester United", "Liverpool", "Arsenal", "Chelsea", "Manchester City", "Tottenham Hotspur"],
+      "divisao1": ["Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton & Hove Albion", "Burnley", "Chelsea", "Crystal Palace", "Everton", "Fulham", "Leeds United", "Liverpool", "Manchester City", "Manchester United", "Newcastle United", "Nottingham Forest", "Sunderland", "Tottenham Hotspur", "West Ham United", "Wolverhampton Wanderers"],
+      "divisao2": ["Birmingham City", "Blackburn Rovers", "Bristol City", "Charlton Athletic", "Coventry City", "Derby County", "Hull City", "Ipswich Town", "Leicester City", "Middlesbrough", "Millwall", "Norwich City", "Oxford United", "Portsmouth", "Preston North End", "Queens Park Rangers", "Sheffield United", "Sheffield Wednesday", "Southampton", "Stoke City", "Swansea City", "Watford", "West Bromwich Albion", "Wrexham"]
+    },
+    "Itália": {
+      "grandes": ["Juventus", "AC Milan", "Inter Milan", "Roma", "Napoli", "Fiorentina"],
+      "divisao1": ["Atalanta", "Bologna", "Cagliari", "Como", "Cremonese", "Fiorentina", "Genoa", "Hellas Verona", "Inter Milan", "Juventus", "Lazio", "Lecce", "AC Milan", "Napoli", "Parma", "Pisa", "Roma", "Sassuolo", "Torino", "Udinese"],
+      "divisao2": ["Avellino", "Bari", "Carrarese", "Catanzaro", "Cesena", "Empoli", "Frosinone", "Juve Stabia", "Mantova", "Modena", "Monza", "Padova", "Palermo", "Pescara", "Reggiana", "Sampdoria", "Spezia", "Südtirol", "Venezia", "Virtus Entella"]
+    },
+    "Alemanha": {
+      "grandes": ["Bayern Munich", "Borussia Dortmund", "RB Leipzig", "Bayer Leverkusen", "Schalke 04", "Hamburger SV"],
+      "divisao1": ["FC Augsburg", "Union Berlin", "Werder Bremen", "Borussia Dortmund", "Eintracht Frankfurt", "SC Freiburg", "Hamburger SV", "1. FC Heidenheim", "TSG Hoffenheim", "1. FC Köln", "RB Leipzig", "Bayer Leverkusen", "Mainz 05", "Borussia Mönchengladbach", "Bayern Munich", "FC St. Pauli", "VfB Stuttgart", "VfL Wolfsburg"],
+      "divisao2": ["Schalke 04", "SV Elversberg", "SC Paderborn", "Hannover 96", "SV Darmstadt 98", "1. FC Kaiserslautern", "Hertha BSC", "1. FC Nürnberg", "VfL Bochum", "Karlsruher SC", "Dynamo Dresden", "Holstein Kiel", "Arminia Bielefeld", "1. FC Magdeburg", "Eintracht Braunschweig", "SpVgg Greuther Fürth", "Fortuna Düsseldorf", "SC Preußen Münster"]
+    },
+    "França": {
+      "grandes": ["Paris Saint-Germain", "Marseille", "Lyon", "Monaco", "Lille"],
+      "divisao1": ["Angers", "Auxerre", "Brest", "Le Havre", "Lens", "Lille", "Lorient", "Lyon", "Marseille", "Metz", "Monaco", "Nantes", "Nice", "Paris FC", "Paris Saint-Germain", "Rennes", "Strasbourg", "Toulouse"],
+      "divisao2": ["Amiens", "Annecy", "Bastia", "Boulogne", "Clermont", "Dunkerque", "Grenoble", "Guingamp", "Laval", "Le Mans", "Montpellier", "Nancy", "Pau", "Red Star", "Reims", "Rodez", "Saint-Étienne", "Troyes"]
+    },
+    "Portugal": {
+      "grandes": ["Benfica", "Porto", "Sporting CP", "Braga", "Vitória de Guimarães"],
+      "divisao1": ["Alverca", "Arouca", "AVS", "Benfica", "Braga", "Casa Pia", "Estoril Praia", "Estrela da Amadora", "Famalicão", "Gil Vicente", "Moreirense", "Nacional", "Porto", "Rio Ave", "Santa Clara", "Sporting CP", "Tondela", "Vitória de Guimarães"],
+      "divisao2": ["Académico de Viseu", "Benfica B", "Chaves", "Farense", "Feirense", "Felgueiras", "Leixões", "Lusitânia Lourosa", "Marítimo", "Oliveirense", "Paços de Ferreira", "Penafiel", "Portimonense", "Porto B", "Sporting CP B", "Torreense", "União de Leiria", "Vizela"]
+    },
+    "Holanda": {
+      "grandes": ["Ajax", "PSV Eindhoven", "Feyenoord", "AZ"],
+      "divisao1": ["Ajax", "AZ", "Excelsior", "Feyenoord", "Fortuna Sittard", "Go Ahead Eagles", "Groningen", "Heerenveen", "Heracles Almelo", "NAC Breda", "NEC", "PEC Zwolle", "PSV Eindhoven", "Sparta Rotterdam", "Telstar", "Twente", "Utrecht", "Volendam"],
+      "divisao2": ["ADO Den Haag", "Almere City", "Cambuur", "De Graafschap", "Den Bosch", "Dordrecht", "Eindhoven", "Emmen", "Helmond Sport", "Jong Ajax", "Jong AZ", "Jong PSV", "Jong FC Utrecht", "MVV Maastricht", "RKC Waalwijk", "Roda JC Kerkrade", "TOP Oss", "Vitesse", "VVV-Venlo", "Willem II"]
+    }
+  }
+}
