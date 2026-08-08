@@ -246,12 +246,16 @@ export function Sim({ nickname, country, position, role, potential, initialToken
 
         {error && <div className="error-banner">{error}</div>}
 
-        <div className="dash-bar">
-          <div className="dash-item"><div className="dash-k">Idade</div><div className="dash-v">{dash?.age ?? "—"}</div></div>
-          <div className="dash-item"><div className="dash-k">Overall</div><div className="dash-v">{dash?.overall ?? "—"}</div></div>
-          <div className="dash-item"><div className="dash-k">Potencial</div><div className="dash-v">{potential}</div></div>
-          <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash?.clubName || "—"}</div></div>
-        </div>
+        {lastSeason ? (
+          <ClubStatusCard season={lastSeason} country={country} />
+        ) : (
+          <div className="dash-bar">
+            <div className="dash-item"><div className="dash-k">Idade</div><div className="dash-v">{dash?.age ?? "—"}</div></div>
+            <div className="dash-item"><div className="dash-k">Overall</div><div className="dash-v">{dash?.overall ?? "—"}</div></div>
+            <div className="dash-item"><div className="dash-k">Potencial</div><div className="dash-v">{potential}</div></div>
+            <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash?.clubName || "—"}</div></div>
+          </div>
+        )}
 
         {lastSeason && (
           <ManagementPanel
@@ -448,17 +452,107 @@ function SeasonNewsFlash({ season }: { season: SeasonResult }) {
   );
 }
 
+// ClubDirectory.LeagueRivals: tier>=3 é a 1ª divisão, tier<3 é a 2ª — mesmo corte usado
+// no motor (ver ClubDirectory.cs). Sem isto, a 2ª divisão aparecia com o nome da 1ª
+// (bug real: "SpVgg em 5º na Bundesliga" — era a 2. Bundesliga, simulada certa, só
+// rotulada errado).
+function leagueNameFor(clubTier: number, country: string): string {
+  return clubTier >= 3
+    ? (LEAGUE_NAME[country] ?? "Liga Nacional")
+    : (SECOND_DIVISION_NAME[country] ?? "Segunda Divisão");
+}
+
+// Extraído pra ser reaproveitado tanto no resumo de cada temporada (SeasonClip) quanto
+// no painel de status do clube sempre visível no topo (roadmap pós-§9, "tela inicial
+// nesse estilo, com a tabela completa").
+function LeagueTableView({ rows }: { rows: ReturnType<typeof leagueTableRowsToShow> }) {
+  if (rows.length === 0) return null;
+  const relegationCut = rows.length - RELEGATION_SPOTS;
+  return (
+    <div style={{ maxHeight: 220, overflowY: "auto" }}>
+      {rows.map((r) => {
+        const inPromotionZone = r.rank <= PROMOTION_SPOTS;
+        const inRelegationZone = r.rank > relegationCut;
+        return (
+          <div key={r.clubName}>
+            {r.rank === relegationCut + 1 && (
+              <div style={{ borderTop: "1px dashed #c0392b", color: "#c0392b", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", padding: "3px 0 2px", fontWeight: 700 }}>
+                Zona de rebaixamento
+              </div>
+            )}
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              borderLeft: `3px solid ${inPromotionZone ? "#27ae60" : inRelegationZone ? "#c0392b" : "transparent"}`,
+              paddingLeft: 4,
+              fontWeight: r.isPlayerClub ? 700 : 400,
+              color: r.isPlayerClub ? "var(--blue)" : undefined,
+            }}>
+              <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Painel de status do clube (roadmap pós-§9, "tela inicial nesse estilo, com a tabela
+// completa, seu overall e tals") — referência visual de outro app, não cópia literal:
+// fica sempre visível no topo (não só dentro do resumo de cada temporada), mostrando o
+// clube atual, a divisão, o status na tabela (campeão/zona de acesso/rebaixamento) e a
+// tabela completa da última temporada fechada.
+function ClubStatusCard({ season, country }: { season: SeasonResult; country: string }) {
+  const leagueName = leagueNameFor(season.clubTier, country);
+  const tableRows = leagueTableRowsToShow(season);
+  const champion = season.leaguePosition === 1;
+  const inPromotionZone = !champion && season.leaguePosition <= PROMOTION_SPOTS;
+  const inRelegationZone = tableRows.length > 0 && season.leaguePosition > tableRows.length - RELEGATION_SPOTS;
+  const statusBadge = champion
+    ? { text: "🏆 Campeão", color: "var(--gold)" }
+    : inPromotionZone
+      ? { text: "⬆️ Zona de acesso", color: "#27ae60" }
+      : inRelegationZone
+        ? { text: "⬇️ Zona de rebaixamento", color: "#c0392b" }
+        : null;
+
+  return (
+    // .dash-bar por padrão é display:grid (4 colunas) — sobrescrito aqui pro layout
+    // empilhado (cabeçalho, stats, tabela) deste cartão, mesmo ajuste já feito no
+    // ManagementPanel pra evitar o mesmo desalinhamento grid-vs-flex.
+    <div className="dash-bar" style={{ display: "flex", flexDirection: "column", marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div style={{ fontFamily: "var(--font-d)", fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{season.clubName}</div>
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>{leagueName} · {season.leaguePosition}º lugar</div>
+        </div>
+        {statusBadge && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em",
+            padding: "4px 8px", borderRadius: 99, border: `1px solid ${statusBadge.color}`, color: statusBadge.color,
+          }}>{statusBadge.text}</span>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <div className="dash-item"><div className="dash-k">Overall</div><div className="dash-v">{season.overall}</div></div>
+        <div className="dash-item"><div className="dash-k">Gols</div><div className="dash-v">{season.goals}</div></div>
+        <div className="dash-item"><div className="dash-k">Assist.</div><div className="dash-v">{season.assists}</div></div>
+        <div className="dash-item"><div className="dash-k">Jogos</div><div className="dash-v">{season.apps}</div></div>
+      </div>
+      {tableRows.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 11 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela completa · {leagueName}</div>
+          <LeagueTableView rows={tableRows} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeasonClip({ season, country }: { season: SeasonResult; country: string }) {
   const champion = season.leaguePosition === 1;
   const club = season.clubName;
   const tableRows = leagueTableRowsToShow(season);
-  // ClubDirectory.LeagueRivals: tier>=3 é a 1ª divisão, tier<3 é a 2ª — mesmo corte
-  // usado no motor (ver ClubDirectory.cs). Sem isto, a 2ª divisão aparecia com o nome
-  // da 1ª (bug real: "SpVgg em 5º na Bundesliga" — era a 2. Bundesliga, simulada certa,
-  // só rotulada errado).
-  const leagueName = season.clubTier >= 3
-    ? (LEAGUE_NAME[country] ?? "Liga Nacional")
-    : (SECOND_DIVISION_NAME[country] ?? "Segunda Divisão");
+  const leagueName = leagueNameFor(season.clubTier, country);
   const injuryNote = INJURY_LABEL[season.injury];
   const note = moraleNote(season);
   const reqNote = requestNote(season);
@@ -483,31 +577,7 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
       {tableRows.length > 0 && (
         <div className="body" style={{ marginTop: 6, fontSize: 11 }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela completa · {leagueName}</div>
-          <div style={{ maxHeight: 220, overflowY: "auto" }}>
-            {tableRows.map((r) => {
-              const relegationCut = tableRows.length - RELEGATION_SPOTS;
-              const inPromotionZone = r.rank <= PROMOTION_SPOTS;
-              const inRelegationZone = r.rank > relegationCut;
-              return (
-                <div key={r.clubName}>
-                  {r.rank === relegationCut + 1 && (
-                    <div style={{ borderTop: "1px dashed #c0392b", color: "#c0392b", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.06em", padding: "3px 0 2px", fontWeight: 700 }}>
-                      Zona de rebaixamento
-                    </div>
-                  )}
-                  <div style={{
-                    display: "flex", justifyContent: "space-between",
-                    borderLeft: `3px solid ${inPromotionZone ? "#27ae60" : inRelegationZone ? "#c0392b" : "transparent"}`,
-                    paddingLeft: 4,
-                    fontWeight: r.isPlayerClub ? 700 : 400,
-                    color: r.isPlayerClub ? "var(--blue)" : undefined,
-                  }}>
-                    <span>{r.rank}º {r.clubName}</span><span>{r.points} pts</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <LeagueTableView rows={tableRows} />
         </div>
       )}
       {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}
