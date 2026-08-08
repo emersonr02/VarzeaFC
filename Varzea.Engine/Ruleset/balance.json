@@ -145,7 +145,7 @@
     "maxRetireAge": 38,
     "minPeakAge": 26,
     "maxPeakAge": 29,
-    "growthRate": 0.28,
+    "growthRate": 0.16,
     "minPotentialGap": 14,
     "maxPotentialGap": 27
   }

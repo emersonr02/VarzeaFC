@@ -656,14 +656,21 @@ public sealed class CareerSimulator
             }
 
             // --- SELEÇÃO / COPA DO MUNDO (ciclo de 4 anos) ---
+            // Bug real relatado: "joguei copa do mundo na série B" — convocação só
+            // olhava overall, nunca o nível do clube. Seleção nacional exige estar na
+            // 1ª divisão (tier>=3): ninguém é convocado jogando na 2ª, por mais bem
+            // avaliado que esteja no papel — o olheiro da seleção não vê quem não
+            // aparece na vitrine certa. Dentro da 1ª divisão, ainda pesa a mão: tier 3
+            // (fundo da divisão) bem mais raro que tier 5 (grandes).
             int seasonCaps = 0;
-            if (overall >= 76 && age >= 18 && age <= 35 && rng.Chance(0.35))
+            double tierCapFactor = tier switch { 5 => 1.0, 4 => 0.7, 3 => 0.35, _ => 0.0 };
+            if (overall >= 76 && age >= 18 && age <= 35 && tier >= 3 && rng.Chance(Math.Clamp(0.35 * tierCapFactor, 0, 0.35)))
                 seasonCaps += rng.NextInt(1, 8);
 
             bool wcYear = (age - curve.StartAge) % 4 == 2;
-            if (wcYear && overall >= 74 && age >= 18)
+            if (wcYear && overall >= 74 && age >= 18 && tier >= 3)
             {
-                double callUp = Math.Clamp((overall - 70) / 60.0 + country.Strength / 40.0, 0.05, 0.60);
+                double callUp = Math.Clamp((overall - 70) / 60.0 + country.Strength / 40.0, 0.05, 0.60) * tierCapFactor;
                 if (rng.Chance(callUp))
                 {
                     seasonCaps += rng.NextInt(3, 7);
