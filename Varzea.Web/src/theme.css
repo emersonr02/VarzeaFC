@@ -151,7 +151,12 @@ body {
 .dash-v { font-family: var(--font-d); font-size: 19px; color: var(--gold); }
 .dash-trait { grid-column: 1 / -1; text-align: center; margin-top: 4px; font-family: var(--font-h); color: var(--paper2); font-size: 13px; }
 
-.ticker-wrap { background: var(--paper2); border-radius: 10px; padding: 6px; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.22); max-height: 400px; overflow-y: auto; }
+.ticker-wrap { background: var(--paper2); border-radius: 10px; padding: 6px; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.22); height: 400px; overflow-y: auto; scroll-behavior: smooth; }
+
+/* Notificação de oferta/proposta (roadmap pós-§9): fora da timeline das rodadas, com
+   destaque visual pra separar claramente de um recorte comum do ticker. */
+.notification-banner { margin-bottom: 12px; border: 2px solid var(--gold); border-radius: 6px; animation: clipIn 0.3s ease both; }
+.notification-banner .clip { margin: 0; box-shadow: none; }
 .clip { background: var(--paper); margin: 8px; padding: 12px 14px; border-radius: 4px; border-left: 4px solid var(--rust); box-shadow: 0 3px 6px rgba(0, 0, 0, 0.12); animation: clipIn 0.3s ease both; }
 .clip.clip-match { padding: 9px 12px; margin: 6px 8px; border-left-width: 3px; border-left-color: var(--blue); }
 .clip.clip-final { border-left-color: var(--gold-deep); }

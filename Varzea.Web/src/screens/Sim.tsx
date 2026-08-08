@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { PendingContractChoice, Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
@@ -13,13 +13,11 @@ import {
 } from "../data/flavor";
 import { INJURY_LABEL, POS_LABEL, SEASON_REQUEST_BUTTON_LABEL, TITLE_LABEL } from "../data/labels";
 
-interface DisplayedClip {
-  data: ClipData;
-  resolvedAccept?: boolean;
-  // Roadmap §9 Bloco 3, "múltiplas propostas": índice da proposta aceita (kind
-  // "contractChoice"), ou -1 quando recusou todas.
-  resolvedChoiceIndex?: number;
-}
+// Ofertas/propostas de contrato SEMPRE pausam a carreira até serem decididas — nunca
+// entram na timeline das rodadas, aparecem como notificação separada (ver
+// PendingPauseNotification). Só existem dois tipos de pausa (mutuamente exclusivos, ver
+// CareerProgress.AwaitingDecision no motor).
+type PendingPause = Extract<ClipData, { kind: "offer" | "contractChoice" }>;
 
 interface Props {
   nickname: string;
@@ -35,9 +33,13 @@ interface Props {
 export function Sim({ nickname, country, position, role, potential, initialToken, onExit, onFinished }: Props) {
   const [token, setToken] = useState(initialToken);
   const [queue, setQueue] = useState<ClipData[]>([]);
-  const [displayed, setDisplayed] = useState<DisplayedClip[]>([]);
+  // Só temporada/final/prêmio/aposentadoria — ofertas e propostas de contrato NUNCA
+  // entram aqui (ver pendingPause abaixo), então não precisam de estado de "resolvido".
+  const [displayed, setDisplayed] = useState<Exclude<ClipData, PendingPause>[]>([]);
   const [finished, setFinished] = useState(false);
-  const [awaitingIndex, setAwaitingIndex] = useState<number | null>(null);
+  // Notificação de oferta/proposta pendente — fora da timeline das rodadas (ver
+  // PendingPauseNotification). Só existe uma pausa por vez, nunca junto com a outra.
+  const [pendingPause, setPendingPause] = useState<PendingPause | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dash, setDash] = useState<{ age: number; overall: number; clubTier: number; clubName: string } | null>(null);
@@ -47,6 +49,13 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   const [lastSeason, setLastSeason] = useState<SeasonResult | null>(null);
   const [pendingRequest, setPendingRequest] = useState<Exclude<SeasonRequestKind, "None"> | null>(null);
   const clubNames = useRef<Record<number, string>>({});
+  const tickerRef = useRef<HTMLDivElement>(null);
+
+  // Timeline de tamanho fixo (ver .ticker-wrap): desce sozinha pro final a cada recorte
+  // novo, sem o jogador precisar rolar manualmente.
+  useEffect(() => {
+    tickerRef.current?.scrollTo({ top: tickerRef.current.scrollHeight, behavior: "smooth" });
+  }, [displayed]);
 
   function clubFor(tier: number): string {
     if (!clubNames.current[tier]) clubNames.current[tier] = buildClubName(country, tier);
@@ -84,21 +93,23 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     return { clips: [...seasonClips, ...offerClip, ...contractClip], finished: resp.finished, token: resp.token };
   }
 
-  function isPause(c: ClipData): c is Extract<ClipData, { kind: "offer" | "contractChoice" }> {
+  function isPause(c: ClipData): c is PendingPause {
     return c.kind === "offer" || c.kind === "contractChoice";
   }
 
+  // Ofertas/propostas nunca entram na timeline (ver PendingPauseNotification) — só
+  // pausam a fila local até serem decididas, fora do fluxo normal de "Avançar".
   function popAndDisplay(nextQueue: ClipData[]) {
     if (nextQueue.length === 0) return;
     const [head, ...rest] = nextQueue;
     setQueue(rest);
     setDash(dashFrom(head));
-    if (!isPause(head)) setLastSeason(head.season);
-    setDisplayed((prev) => {
-      const arr = [...prev, { data: head }];
-      if (isPause(head)) setAwaitingIndex(arr.length - 1);
-      return arr;
-    });
+    if (isPause(head)) {
+      setPendingPause(head);
+    } else {
+      setLastSeason(head.season);
+      setDisplayed((prev) => [...prev, head]);
+    }
   }
 
   // Painel Contrato + Técnico: só dá pra anexar um pedido novo quando esta chamada vai
@@ -106,10 +117,10 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   // já buscado (senão o pedido cairia numa temporada que o motor já revelou noutra
   // chamada, fora de ordem). Casa com a mesma janela em que "Avançar" vira rede de
   // verdade em vez de só paginar localmente.
-  const canRequest = queue.length === 0 && !finished && awaitingIndex === null && !loading;
+  const canRequest = queue.length === 0 && !finished && pendingPause === null && !loading;
 
   async function handleAdvance() {
-    if (awaitingIndex !== null || loading) return;
+    if (pendingPause !== null || loading) return;
     setError(null);
     if (queue.length > 0) {
       popAndDisplay(queue);
@@ -131,10 +142,8 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   }
 
   async function handleDecision(accept: boolean) {
-    if (awaitingIndex === null) return;
-    const idx = awaitingIndex;
-    setDisplayed((prev) => prev.map((d, i) => (i === idx ? { ...d, resolvedAccept: accept } : d)));
-    setAwaitingIndex(null);
+    if (pendingPause === null) return;
+    setPendingPause(null);
     setLoading(true);
     setError(null);
     try {
@@ -152,10 +161,8 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   // Roadmap §9 Bloco 3, "múltiplas propostas": index >= 0 aceita aquela proposta;
   // -1 recusa todas (contrato curto de "prova" — mesmo padrão do motor).
   async function handleContractChoice(index: number) {
-    if (awaitingIndex === null) return;
-    const idx = awaitingIndex;
-    setDisplayed((prev) => prev.map((d, i) => (i === idx ? { ...d, resolvedChoiceIndex: index } : d)));
-    setAwaitingIndex(null);
+    if (pendingPause === null) return;
+    setPendingPause(null);
     setLoading(true);
     setError(null);
     try {
@@ -174,6 +181,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     setLoading(true);
     setError(null);
     setPendingRequest(null); // Pular tudo não faz pedidos do painel Contrato + Técnico
+    setPendingPause(null); // Pulando tudo, qualquer pausa em tela é resolvida direto abaixo
     try {
       let pendingQueue = [...queue];
       let currentToken = token;
@@ -184,7 +192,6 @@ export function Sim({ nickname, country, position, role, potential, initialToken
         if (pendingQueue.length > 0 && pendingQueue[0].kind === "offer") {
           const offerClip = pendingQueue.shift()!;
           const accept = offerClip.kind === "offer" ? offerClip.offer.upgrade : false;
-          setDisplayed((prev) => [...prev, { data: offerClip, resolvedAccept: accept }]);
           const more = await fetchMore(currentToken, accept);
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
@@ -196,16 +203,17 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           const proposals = choiceClip.kind === "contractChoice" ? choiceClip.choice.proposals : [];
           const upgradeIdx = proposals.findIndex((p) => p.upgrade);
           const chosen = upgradeIdx >= 0 ? upgradeIdx : -1;
-          setDisplayed((prev) => [...prev, { data: choiceClip, resolvedChoiceIndex: chosen }]);
           const more = await fetchMore(currentToken, undefined, undefined, chosen);
           currentToken = more.token;
           done = more.finished && more.clips.length === 0;
           pendingQueue = [...pendingQueue, ...more.clips];
         } else if (pendingQueue.length > 0) {
           const clip = pendingQueue.shift()!;
-          setDisplayed((prev) => [...prev, { data: clip }]);
+          if (!isPause(clip)) {
+            setDisplayed((prev) => [...prev, clip]);
+            setLastSeason(clip.season);
+          }
           setDash(dashFrom(clip));
-          if (!isPause(clip)) setLastSeason(clip.season);
         } else {
           const more = await fetchMore(currentToken);
           currentToken = more.token;
@@ -223,7 +231,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     }
   }
 
-  const canFinish = finished && queue.length === 0 && awaitingIndex === null;
+  const canFinish = finished && queue.length === 0 && pendingPause === null;
 
   return (
     <section className="screen pitch-bg">
@@ -252,21 +260,21 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           />
         )}
 
-        <div className="ticker-wrap">
-          {displayed.map((d, i) => (
-            <Clip
-              key={i}
-              clip={d.data}
-              resolvedAccept={d.resolvedAccept}
-              resolvedChoiceIndex={d.resolvedChoiceIndex}
-              clubFor={clubFor}
-              nickname={nickname}
-              country={country}
-              onAccept={() => handleDecision(true)}
-              onDecline={() => handleDecision(false)}
-              onChooseContract={handleContractChoice}
-              isAwaiting={awaitingIndex === i}
-            />
+        {/* Ofertas/propostas são notificação FORA da timeline das rodadas — nunca
+            entram no ticker abaixo (ver pendingPause/popAndDisplay). */}
+        {pendingPause && (
+          <PendingPauseNotification
+            pause={pendingPause}
+            clubFor={clubFor}
+            onAccept={() => handleDecision(true)}
+            onDecline={() => handleDecision(false)}
+            onChooseContract={handleContractChoice}
+          />
+        )}
+
+        <div className="ticker-wrap" ref={tickerRef}>
+          {displayed.map((clip, i) => (
+            <Clip key={i} clip={clip} nickname={nickname} country={country} clubFor={clubFor} />
           ))}
           {displayed.length === 0 && !loading && (
             <p className="empty-msg">Clique em "Avançar" pra começar sua primeira temporada.</p>
@@ -278,10 +286,10 @@ export function Sim({ nickname, country, position, role, potential, initialToken
             <button className="btn rust" onClick={() => onFinished(token)}>Ver Resultado Final 🏆</button>
           ) : (
             <>
-              <button className="btn rust" disabled={loading || awaitingIndex !== null} onClick={handleAdvance}>
-                {loading ? "Carregando…" : awaitingIndex !== null ? "Aguardando sua decisão…" : "Avançar →"}
+              <button className="btn rust" disabled={loading || pendingPause !== null} onClick={handleAdvance}>
+                {loading ? "Carregando…" : pendingPause !== null ? "Aguardando sua decisão…" : "Avançar →"}
               </button>
-              <button className="btn secondary" disabled={loading || awaitingIndex !== null} onClick={handleSkipAll}>Pular tudo ⏭</button>
+              <button className="btn secondary" disabled={loading || pendingPause !== null} onClick={handleSkipAll}>Pular tudo ⏭</button>
             </>
           )}
         </div>
@@ -290,26 +298,37 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   );
 }
 
-function Clip({
-  clip, resolvedAccept, resolvedChoiceIndex, isAwaiting, clubFor, nickname, country, onAccept, onDecline, onChooseContract,
-}: {
-  clip: ClipData;
-  resolvedAccept?: boolean;
-  resolvedChoiceIndex?: number;
-  isAwaiting: boolean;
+// Só temporada/final/prêmio/aposentadoria passam por aqui — ofertas e propostas de
+// contrato nunca entram na timeline (ver PendingPauseNotification, fora do ticker).
+function Clip({ clip, clubFor, nickname, country }: {
+  clip: Exclude<ClipData, PendingPause>;
   clubFor: (tier: number) => string;
   nickname: string;
   country: string;
-  onAccept: () => void;
-  onDecline: () => void;
-  onChooseContract: (index: number) => void;
 }) {
   if (clip.kind === "final") return <FinalClip season={clip.season} title={clip.title} clubFor={clubFor} nickname={nickname} country={country} />;
   if (clip.kind === "season") return <SeasonClip season={clip.season} country={country} />;
   if (clip.kind === "awards") return <AwardsClip season={clip.season} />;
-  if (clip.kind === "retire") return <div className="clip"><div className="season-tag">{clip.season.age} anos</div><div className="headline">Fim precoce da carreira</div><div className="body">Uma lesão grave encerra a carreira antes da hora. A torcida se despede com carinho.</div></div>;
-  if (clip.kind === "contractChoice") return <ContractChoiceClip choice={clip.choice} clubFor={clubFor} isAwaiting={isAwaiting} resolvedChoiceIndex={resolvedChoiceIndex} onChoose={onChooseContract} />;
-  return <OfferClip offer={clip.offer} clubFor={clubFor} isAwaiting={isAwaiting} resolvedAccept={resolvedAccept} onAccept={onAccept} onDecline={onDecline} />;
+  return <div className="clip"><div className="season-tag">{clip.season.age} anos</div><div className="headline">Fim precoce da carreira</div><div className="body">Uma lesão grave encerra a carreira antes da hora. A torcida se despede com carinho.</div></div>;
+}
+
+// Notificação fora da timeline das rodadas (ver <when_to_verify> "ofertas de
+// transferência... fora da timeline"): oferta e proposta de contrato são a MESMA
+// pausa lógica no motor (mutuamente exclusivas), só a UI de dentro muda.
+function PendingPauseNotification({ pause, clubFor, onAccept, onDecline, onChooseContract }: {
+  pause: PendingPause;
+  clubFor: (tier: number) => string;
+  onAccept: () => void;
+  onDecline: () => void;
+  onChooseContract: (index: number) => void;
+}) {
+  return (
+    <div className="notification-banner">
+      {pause.kind === "offer"
+        ? <OfferClip offer={pause.offer} clubFor={clubFor} onAccept={onAccept} onDecline={onDecline} />
+        : <ContractChoiceClip choice={pause.choice} clubFor={clubFor} onChoose={onChooseContract} />}
+    </div>
+  );
 }
 
 function FinalClip({ season, title, clubFor, nickname, country }: { season: SeasonResult; title: TitleKind; clubFor: (t: number) => string; nickname: string; country: string }) {
@@ -454,11 +473,11 @@ function AwardsClip({ season }: { season: SeasonResult }) {
   );
 }
 
-function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDecline }: {
+// Só renderiza enquanto pendente — a notificação some assim que decidida (ver
+// handleDecision), não tem mais um estado "resolvido" pra mostrar aqui.
+function OfferClip({ offer, clubFor, onAccept, onDecline }: {
   offer: { age: number; clubTier: number; upgrade: boolean; contractExpiring: boolean };
   clubFor: (t: number) => string;
-  isAwaiting: boolean;
-  resolvedAccept?: boolean;
   onAccept: () => void;
   onDecline: () => void;
 }) {
@@ -478,28 +497,21 @@ function OfferClip({ offer, clubFor, isAwaiting, resolvedAccept, onAccept, onDec
       <div className="season-tag">Janela de transferências · {offer.age} anos</div>
       <div className="headline">{label}</div>
       <div className="body">{body}</div>
-      {isAwaiting ? (
-        <div className="transfer-actions">
-          <button className="btn-mini accept" onClick={onAccept}>Aceitar e assinar</button>
-          <button className="btn-mini decline" onClick={onDecline}>{offer.contractExpiring ? "Renovar curto e provar de novo" : "Permanecer"}</button>
-        </div>
-      ) : (
-        <div style={{ marginTop: 8, fontFamily: "var(--font-b)", fontWeight: 700, fontSize: 12, color: resolvedAccept ? "var(--blue)" : "var(--ink-soft)" }}>
-          {resolvedAccept ? `✔ Assinado com ${toClub}` : "✔ Permaneceu no clube"}
-        </div>
-      )}
+      <div className="transfer-actions">
+        <button className="btn-mini accept" onClick={onAccept}>Aceitar e assinar</button>
+        <button className="btn-mini decline" onClick={onDecline}>{offer.contractExpiring ? "Renovar curto e provar de novo" : "Permanecer"}</button>
+      </div>
     </div>
   );
 }
 
 // Roadmap §9 Bloco 3, "múltiplas propostas": até 3 clubes concretos aparecem quando o
 // contrato vence sem renovação — o jogador escolhe um ou recusa todas (contrato curto
-// de "prova", mesmo desfecho de recusar a proposta única de antes desta feature).
-function ContractChoiceClip({ choice, clubFor, isAwaiting, resolvedChoiceIndex, onChoose }: {
+// de "prova", mesmo desfecho de recusar a proposta única de antes desta feature). Só
+// renderiza enquanto pendente, mesmo espírito de OfferClip acima.
+function ContractChoiceClip({ choice, clubFor, onChoose }: {
   choice: PendingContractChoice;
   clubFor: (t: number) => string;
-  isAwaiting: boolean;
-  resolvedChoiceIndex?: number;
   onChoose: (index: number) => void;
 }) {
   return (
@@ -507,22 +519,14 @@ function ContractChoiceClip({ choice, clubFor, isAwaiting, resolvedChoiceIndex, 
       <div className="season-tag">Fim de contrato · {choice.age} anos</div>
       <div className="headline">Seu contrato venceu e o clube não renovou</div>
       <div className="body">Chegaram propostas de fora. Escolha uma pra assinar ou recuse todas e tente provar seu valor num contrato curto.</div>
-      {isAwaiting ? (
-        <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
-          {choice.proposals.map((p, i) => (
-            <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
-              {p.upgrade ? "⬆️ " : ""}Assinar com {clubFor(p.clubTier)}
-            </button>
-          ))}
-          <button className="btn-mini decline" onClick={() => onChoose(-1)}>Recusar todas — contrato curto de prova</button>
-        </div>
-      ) : (
-        <div style={{ marginTop: 8, fontFamily: "var(--font-b)", fontWeight: 700, fontSize: 12, color: resolvedChoiceIndex !== undefined && resolvedChoiceIndex >= 0 ? "var(--blue)" : "var(--ink-soft)" }}>
-          {resolvedChoiceIndex !== undefined && resolvedChoiceIndex >= 0
-            ? `✔ Assinado com ${clubFor(choice.proposals[resolvedChoiceIndex].clubTier)}`
-            : "✔ Recusou todas — contrato curto de prova"}
-        </div>
-      )}
+      <div className="transfer-actions" style={{ flexDirection: "column", alignItems: "stretch" }}>
+        {choice.proposals.map((p, i) => (
+          <button key={i} className="btn-mini accept" onClick={() => onChoose(i)}>
+            {p.upgrade ? "⬆️ " : ""}Assinar com {clubFor(p.clubTier)}
+          </button>
+        ))}
+        <button className="btn-mini decline" onClick={() => onChoose(-1)}>Recusar todas — contrato curto de prova</button>
+      </div>
     </div>
   );
 }
