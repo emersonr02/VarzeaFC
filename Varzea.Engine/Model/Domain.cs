@@ -172,6 +172,12 @@ public sealed class SeasonResult
     public double Fatigue { get; init; }
     public bool HasPersonalTrainer { get; init; }
 
+    /// <summary>"Mais eventos como lesões que influenciam a carreira real" (roadmap
+    /// pós-§9): true quando esta temporada carrega a ressaca de uma lesão Severe da
+    /// temporada ANTERIOR (perf reduzida, menos jogos) — não a lesão desta temporada em
+    /// si (ver Injury para isso).</summary>
+    public bool RecoveringFromInjury { get; init; }
+
     // --- Promessa de título (painel Clube, roadmap pós-§9) ---
     /// <summary>Prometeu ser campeão da liga NACIONAL esta temporada (via
     /// RequestPromiseTitle) — false quando nenhuma promessa foi feita.</summary>

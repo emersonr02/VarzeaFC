@@ -419,6 +419,7 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
       <div className="season-tag">Resumo · {season.age} anos · Overall {season.overall} · {club}</div>
       <div className="headline">{champion ? "Campeão" : "Temporada"} no {club}</div>
       <div className="body">
+        {season.recoveringFromInjury && <>🩹 Ainda sentindo os efeitos da lesão grave da temporada passada — ritmo abaixo do normal. </>}
         {injuryNote && <>{injuryNote} </>}
         {champion ? `Campeão do ${leagueName}! ` : `Terminou o ${leagueName} em ${season.leaguePosition}º lugar. `}
         {season.caps > 0 && `Chamado para defender a Seleção de ${country}. `}

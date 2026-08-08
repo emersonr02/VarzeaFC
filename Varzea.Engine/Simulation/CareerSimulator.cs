@@ -91,6 +91,13 @@ public sealed class CareerSimulator
     /// descanso acumularia fadiga sem limite (ver acúmulo de fim de temporada abaixo).</summary>
     private const double FatigueMax = 1.2;
 
+    /// <summary>"Mais eventos como lesões que influenciam a carreira real" (roadmap
+    /// pós-§9): lesão Severe não reseta no offseason como se nada tivesse acontecido —
+    /// a temporada SEGUINTE carrega uma penalidade de perf enquanto o jogador recupera
+    /// ritmo de jogo. Mesma ordem de grandeza de FatiguePerfWeight/MoralPerfWeight, mas
+    /// menor — é um efeito de UMA temporada, não acumulado.</summary>
+    private const double InjuryRecoveryPerfPenalty = 6.0;
+
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
         var working = new List<Legend>(pool);
@@ -256,6 +263,12 @@ public sealed class CareerSimulator
         double fatigue = 0;
         bool hasPersonalTrainer = false;
 
+        // Recuperação de lesão grave (roadmap pós-§9, "eventos que influenciam a
+        // carreira real"): true logo depois de uma temporada com InjurySeverity.Severe,
+        // consumido (lido e resetado) no TOPO da temporada seguinte — mesmo padrão de
+        // parentTier pro empréstimo, um efeito de exatamente uma temporada.
+        bool recoveringFromSevereInjury = false;
+
         for (int age = curve.StartAge; age <= retireAge; age++)
         {
             if (parentTier >= 0)
@@ -291,6 +304,13 @@ public sealed class CareerSimulator
             // só depois, no acúmulo de fim de temporada abaixo).
             double fatigueAtStart = fatigue;
             perf -= fatigueAtStart * FatiguePerfWeight;
+
+            // Recuperação de lesão grave: lido e resetado AQUI (efeito de uma única
+            // temporada) — a marcação pra próxima carreira é feita mais abaixo, depois
+            // que a lesão DESTA temporada é conhecida.
+            bool recoveringThisSeason = recoveringFromSevereInjury;
+            recoveringFromSevereInjury = false;
+            if (recoveringThisSeason) perf -= InjuryRecoveryPerfPenalty;
 
             // --- PEDIDOS DO JOGADOR (painel Contrato + Técnico, roadmap pós-§9) ---
             // Resolvido AQUI (antes de apps/Output) pra que bolas paradas já valha nesta
@@ -429,6 +449,10 @@ public sealed class CareerSimulator
                 if (rng.Chance(0.08)) injury = EscalateInjury(injury);
             }
 
+            // Marca a recuperação pra temporada SEGUINTE (não CareerEnding — aí não há
+            // "temporada seguinte" nesta carreira).
+            recoveringFromSevereInjury = injury == InjurySeverity.Severe;
+
             if (injury == InjurySeverity.CareerEnding)
             {
                 // Mesmo aqui (fim abrupto de carreira, antes do resto da temporada ser
@@ -445,7 +469,8 @@ public sealed class CareerSimulator
                     TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                     IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
                     Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
-                    RequestMade = request, RequestGranted = requestGranted
+                    RequestMade = request, RequestGranted = requestGranted,
+                    RecoveringFromInjury = recoveringThisSeason
                 });
                 break;
             }
@@ -454,7 +479,8 @@ public sealed class CareerSimulator
 
             int apps = playedThroughInjury
                 ? Math.Clamp(rng.NextInt(24, 36), 4, 38)
-                : Math.Clamp(rng.NextInt(24, 36) - InjuryCost(injury, rng), 4, 38);
+                : Math.Clamp(rng.NextInt(24, 36) - InjuryCost(injury, rng)
+                    - (recoveringThisSeason ? rng.NextInt(3, 8) : 0), 4, 38);
             if (restedThisSeason)
             {
                 apps = Math.Max(1, apps / 2);
@@ -494,7 +520,8 @@ public sealed class CareerSimulator
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
                 LeaguePosition = leaguePosition,
-                LeagueTable = leagueTable
+                LeagueTable = leagueTable,
+                RecoveringFromInjury = recoveringThisSeason
             };
 
             // --- LIGA ---
@@ -856,7 +883,8 @@ public sealed class CareerSimulator
                 IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
                 Fatigue = fatigue, HasPersonalTrainer = hasPersonalTrainer,
                 PromisedTitle = promisedTitle, PromiseFulfilled = promiseFulfilled,
-                RequestMade = request, RequestGranted = requestGranted
+                RequestMade = request, RequestGranted = requestGranted,
+                RecoveringFromInjury = season.RecoveringFromInjury
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);

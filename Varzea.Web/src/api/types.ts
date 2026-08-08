@@ -110,6 +110,10 @@ export interface SeasonResult {
   leagueTable: LeagueTableRow[];
   requestMade: SeasonRequestKind;
   requestGranted: boolean;
+  // "Mais eventos como lesões que influenciam a carreira real" (roadmap pós-§9): true
+  // quando esta temporada carrega a ressaca de uma lesão Severe da ANTERIOR — não a
+  // lesão desta temporada em si (ver injury pra isso).
+  recoveringFromInjury: boolean;
 }
 
 export interface ClubOptionsResponse {
