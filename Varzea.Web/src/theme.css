@@ -266,3 +266,46 @@ body {
 
 /* Etiqueta "ao vivo" da tabela simultânea. */
 .live-tag { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-b); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #ff6b5a; white-space: nowrap; }
+
+/* ---- Ticker de manchetes da home ------------------------------------------
+   Marquee sem biblioteca: a faixa é renderizada DUAS vezes e a animação desliza
+   até -50%; como a segunda metade é idêntica, o ponto de emenda é invisível. */
+.news-ticker {
+  position: relative; z-index: 3;
+  display: flex; width: 100%; overflow: hidden;
+  background: rgba(0, 0, 0, 0.42);
+  border-top: 1px solid rgba(243, 195, 50, 0.25);
+  border-bottom: 1px solid rgba(243, 195, 50, 0.25);
+  margin: -24px -16px 22px; padding: 7px 0; width: calc(100% + 32px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.ticker-strip { display: flex; flex-shrink: 0; align-items: center; gap: 30px; padding-right: 30px; animation: tickerScroll 48s linear infinite; }
+.news-ticker:hover .ticker-strip { animation-play-state: paused; }
+.ticker-item { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-family: var(--font-b); font-size: 11px; color: var(--paper2); letter-spacing: 0.02em; }
+.ticker-item b { color: var(--gold); text-transform: uppercase; font-size: 10px; letter-spacing: 0.09em; }
+.ticker-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--rust); box-shadow: 0 0 7px var(--rust); flex-shrink: 0; }
+@keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .ticker-strip { animation: none; }
+  .news-ticker { overflow-x: auto; }
+}
+
+/* ---- Cards de "até onde dá pra chegar" ------------------------------------ */
+.section-label { font-family: var(--font-b); font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin: 26px 0 10px; }
+.tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 620px) { .tier-grid { grid-template-columns: 1fr; } }
+.tier-card {
+  background: linear-gradient(165deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.28));
+  border: 2px solid rgba(255, 255, 255, 0.18); border-radius: 12px; padding: 14px 12px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tier-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
+.tier-score { font-family: var(--font-d); font-size: 34px; line-height: 0.95; display: flex; align-items: baseline; gap: 6px; }
+.tier-score-lbl { font-family: var(--font-b); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+.tier-name { font-family: var(--font-d); font-size: 15px; text-transform: uppercase; color: #fff; margin-top: 6px; line-height: 1.1; }
+.tier-note { font-family: var(--font-h); font-size: 12px; color: var(--paper2); margin-bottom: 6px; }
+.tier-desc { font-size: 11px; line-height: 1.35; color: rgba(255, 255, 255, 0.72); }
+.tier-req { margin-top: 7px; display: inline-block; font-family: var(--font-b); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); border: 1px solid rgba(243, 195, 50, 0.5); border-radius: 99px; padding: 2px 7px; }
+
+.btn-hero { width: 100%; font-size: 17px; padding: 16px 22px; margin-top: 4px; }
