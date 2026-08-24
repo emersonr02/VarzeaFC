@@ -86,6 +86,29 @@ public sealed record CareerRecipe(
 /// clube + pontos, na ordem já ordenada por SimulateLeagueTable.</summary>
 public sealed record LeagueTableRow(string ClubName, int Points, bool IsPlayerClub);
 
+/// <summary>
+/// Uma partida do campeonato nacional (modo "jogo a jogo"). Os RESULTADOS já vêm
+/// decididos pela mesma simulação de pontos corridos que monta a tabela
+/// (SimulateLeagueTable) — não é um segundo sorteio paralelo, então placar, pontos e
+/// posição final nunca se contradizem. Os números do JOGADOR (gols/assistências) são a
+/// distribuição dos totais que a temporada já fechou, espalhados pelas partidas em que
+/// ele realmente entrou (ver CareerSimulator.BuildMatches).
+/// </summary>
+public sealed record MatchResult(
+    int Round,
+    string Opponent,
+    bool Home,
+    int GoalsFor,
+    int GoalsAgainst,
+    int PlayerGoals,
+    int PlayerAssists,
+    /// <summary>false = desfalque (lesão/rodízio) — Apps da temporada é menor que o
+    /// número de rodadas, então algumas partidas acontecem sem o jogador.</summary>
+    bool Played,
+    /// <summary>Nota da atuação (0-10), no espírito das notas de imprensa. 0 quando
+    /// não jogou.</summary>
+    double Rating);
+
 public sealed class SeasonResult
 {
     public int Age { get; init; }
@@ -108,6 +131,22 @@ public sealed class SeasonResult
     /// <summary>Tabela de classificação real desta temporada, já ordenada — clubes da
     /// mesma divisão do jogador disputando pontos corridos (Roadmap pós-§9).</summary>
     public IReadOnlyList<LeagueTableRow> LeagueTable { get; init; } = Array.Empty<LeagueTableRow>();
+
+    /// <summary>Partidas do campeonato nacional, rodada a rodada (modo "jogo a jogo").
+    /// Vazio quando a carreira roda sem detalhamento de partidas (Monte Carlo), já que
+    /// guardar ~38 partidas × ~22 temporadas × 10 mil carreiras não cabe em memória —
+    /// ver CareerSimulator.RunCareer(includeMatches).</summary>
+    public IReadOnlyList<MatchResult> Matches { get; init; } = Array.Empty<MatchResult>();
+
+    /// <summary>Nota média da temporada (0-10), média das partidas em que jogou —
+    /// 0 quando não há detalhamento de partidas.</summary>
+    public double SeasonRating { get; init; }
+
+    /// <summary>Valor de mercado estimado em milhões de euros — número de vitrine
+    /// (deriva de overall/idade/nível do clube), não entra em nenhum cálculo do motor
+    /// nem no placar final.</summary>
+    public double MarketValue { get; init; }
+
     public InjurySeverity Injury { get; init; }
     public List<TitleKind> Titles { get; } = new();
     public int Caps { get; init; }

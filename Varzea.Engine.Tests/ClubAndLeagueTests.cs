@@ -204,4 +204,86 @@ public class ClubAndLeagueTests
 
         Assert.True(sawInternational, "nenhuma transferência internacional observada nas seeds/países testados");
     }
+
+    /// <summary>Modo "jogo a jogo": detalhar as partidas usa um RNG DERIVADO, então
+    /// ligar/desligar não pode mudar NENHUM outro número da carreira — é essa a
+    /// garantia que deixa o Monte Carlo rodar sem partidas e a API rodar com elas, sem
+    /// as duas divergirem (e sem precisar recalibrar o placar).</summary>
+    [Fact]
+    public void IncludeMatches_NeverChangesAnythingElseInTheCareer()
+    {
+        var sim = new CareerSimulator(Rules, Clubs);
+        foreach (var country in new[] { "Brasil", "Alemanha", "Espanha" })
+        {
+            for (ulong seed = 1; seed <= 20; seed++)
+            {
+                var recipe = BaseRecipe(seed, country) with { ContractChoices = Enumerable.Repeat(0, 30).ToArray() };
+                var without = sim.SimulateCareer(recipe, includeMatches: false);
+                var with = sim.SimulateCareer(recipe, includeMatches: true);
+
+                Assert.Equal(without.Timeline.Count, with.Timeline.Count);
+                for (int i = 0; i < without.Timeline.Count; i++)
+                {
+                    var a = without.Timeline[i];
+                    var b = with.Timeline[i];
+                    Assert.Equal(a.Age, b.Age);
+                    Assert.Equal(a.Overall, b.Overall);
+                    Assert.Equal(a.ClubTier, b.ClubTier);
+                    Assert.Equal(a.ClubName, b.ClubName);
+                    Assert.Equal(a.ClubCountry, b.ClubCountry);
+                    Assert.Equal(a.Apps, b.Apps);
+                    Assert.Equal(a.Goals, b.Goals);
+                    Assert.Equal(a.Assists, b.Assists);
+                    Assert.Equal(a.LeaguePosition, b.LeaguePosition);
+                    Assert.Equal(a.Titles, b.Titles);
+                    Assert.Empty(a.Matches);
+                }
+                Assert.Equal(without.PeakOverall, with.PeakOverall);
+                Assert.Equal(without.TotalGoals, with.TotalGoals);
+            }
+        }
+    }
+
+    /// <summary>As partidas detalhadas precisam BATER com a tabela: mesma quantidade de
+    /// jogos que o turno-returno da divisão, e os pontos que o jogador soma nelas têm
+    /// que ser exatamente os pontos da linha dele na tabela — senão placar e
+    /// classificação se contradizem na tela.</summary>
+    [Fact]
+    public void Matches_AreConsistentWithTheLeagueTable()
+    {
+        var sim = new CareerSimulator(Rules, Clubs);
+        int checkedSeasons = 0;
+
+        foreach (var country in new[] { "Brasil", "Inglaterra", "Itália" })
+        {
+            for (ulong seed = 1; seed <= 15; seed++)
+            {
+                var result = sim.SimulateCareer(BaseRecipe(seed, country), includeMatches: true);
+                foreach (var s in result.Timeline)
+                {
+                    if (s.LeagueTable.Count == 0) continue;
+                    checkedSeasons++;
+
+                    // Turno e returno contra cada rival.
+                    Assert.Equal((s.LeagueTable.Count - 1) * 2, s.Matches.Count);
+
+                    // Pontos somados nas partidas == pontos na tabela.
+                    int pts = s.Matches.Sum(m => m.GoalsFor > m.GoalsAgainst ? 3 : m.GoalsFor == m.GoalsAgainst ? 1 : 0);
+                    var ownRow = s.LeagueTable.Single(r => r.IsPlayerClub);
+                    Assert.Equal(ownRow.Points, pts);
+
+                    // Metade em casa, metade fora; nunca enfrenta o próprio clube.
+                    Assert.Equal(s.Matches.Count / 2, s.Matches.Count(m => m.Home));
+                    Assert.DoesNotContain(s.Matches, m => m.Opponent == s.ClubName);
+
+                    // Gols do jogador nunca passam do total da temporada nem do placar.
+                    Assert.True(s.Matches.Sum(m => m.PlayerGoals) <= s.Goals);
+                    Assert.All(s.Matches, m => Assert.True(m.PlayerGoals <= m.GoalsFor));
+                    Assert.All(s.Matches, m => Assert.True(m.Played || (m.PlayerGoals == 0 && m.Rating == 0)));
+                }
+            }
+        }
+
+        Assert.True(checkedSeasons > 100, $"amostra pequena demais ({checkedSeasons} temporadas)");
+    }
 }

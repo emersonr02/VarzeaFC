@@ -169,7 +169,11 @@ app.MapPost("/careers/advance", (AdvanceRequest req) =>
     // — ver AdvanceCareer. RevealAll (só usado por "pular tudo" no front) desliga o
     // limite pra buscar até a próxima pausa/fim numa viagem de rede só.
     int? revealLimit = req.RevealAll == true ? null : state.SeasonsRevealed + 1;
-    var progress = simulator.AdvanceCareer(recipe, revealLimit);
+    // includeMatches: o front sempre recebe o detalhamento rodada a rodada (modo "jogo
+    // a jogo"). Custa memória só aqui, na carreira única do jogador — o Monte Carlo
+    // (10 mil carreiras) continua rodando sem partidas. Como BuildMatches usa um RNG
+    // derivado, ligar isso não muda nenhum outro número da simulação.
+    var progress = simulator.AdvanceCareer(recipe, revealLimit, includeMatches: true);
 
     // Uma única chamada pode revelar VÁRIAS temporadas de uma vez quando não há pausa no
     // meio (fetchMore no front devolve tudo até a próxima pausa ou o fim) — então

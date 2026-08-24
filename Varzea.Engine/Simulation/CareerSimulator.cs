@@ -142,7 +142,8 @@ public sealed class CareerSimulator
 
     /// <summary>Roda a carreira inteira. Exige TransferChoices já completo — usado pelo
     /// Monte Carlo e por /careers/save (que já recebe a receita fechada).</summary>
-    public CareerResult SimulateCareer(CareerRecipe recipe) => RunCareer(recipe, interactive: false, revealLimit: null).Result;
+    public CareerResult SimulateCareer(CareerRecipe recipe, bool includeMatches = false) =>
+        RunCareer(recipe, interactive: false, revealLimit: null, includeMatches).Result;
 
     /// <summary>
     /// Roda a carreira até a próxima oferta/proposta pendente sem decisão, até
@@ -161,8 +162,8 @@ public sealed class CareerSimulator
     /// "pular tudo" no front passa null pra manter o atalho de ir até o fim/próxima pausa
     /// numa única viagem de rede.
     /// </summary>
-    public CareerProgress AdvanceCareer(CareerRecipe recipe, int? revealLimit = null) =>
-        RunCareer(recipe, interactive: true, revealLimit);
+    public CareerProgress AdvanceCareer(CareerRecipe recipe, int? revealLimit = null, bool includeMatches = false) =>
+        RunCareer(recipe, interactive: true, revealLimit, includeMatches);
 
     /// <summary>
     /// As 3 opções de clube real (Roadmap pós-§9, painel Clube) pro país/posição/draft
@@ -198,7 +199,7 @@ public sealed class CareerSimulator
         return chosen;
     }
 
-    private CareerProgress RunCareer(CareerRecipe recipe, bool interactive, int? revealLimit)
+    private CareerProgress RunCareer(CareerRecipe recipe, bool interactive, int? revealLimit, bool includeMatches)
     {
         var attrs = ResolveDraft(recipe.Seed, recipe.DraftPicks);
         var pos = recipe.Position;
@@ -527,6 +528,7 @@ public sealed class CareerSimulator
                 result.Timeline.Add(new SeasonResult
                 {
                     Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry,
+                    MarketValue = MarketValueOf(overall, age, tier),
                     Injury = injury, LeaguePosition = 20,
                     TeamMorale = teamMorale, CoachMorale = coachMorale, CrowdMorale = crowdMorale,
                     IsCaptain = isCaptain, HasSetPieces = hasSetPieces, OnLoan = parentTier >= 0,
@@ -574,7 +576,16 @@ public sealed class CareerSimulator
             // perf (bom o bastante pra puxar o time, ruim o bastante pra afundar).
             var rivals = _clubs.LeagueRivals(clubCountry, tier, clubName);
             double ownStrength = _clubs.BaseStrength(clubCountry, clubName) + perf;
-            var (leaguePosition, leagueTable) = SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng);
+            var (leaguePosition, leagueTable, fixtures) = SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng);
+
+            // Modo "jogo a jogo": detalha as partidas a partir dos resultados que a
+            // tabela já decidiu. RNG derivado — não consome nada do fluxo da carreira.
+            var matches = includeMatches
+                ? BuildMatches(recipe.Seed, age, fixtures, apps, sg, sa, perf)
+                : (IReadOnlyList<MatchResult>)Array.Empty<MatchResult>();
+            double seasonRating = matches.Count > 0 && matches.Any(m => m.Played)
+                ? Math.Round(matches.Where(m => m.Played).Average(m => m.Rating), 2)
+                : 0;
 
             // --- ACESSO / REBAIXAMENTO (roadmap pós-§9) ---
             // Grandes (tier 5) ficam de fora — lista curada de clubes tradicionalmente
@@ -600,6 +611,8 @@ public sealed class CareerSimulator
             {
                 Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry, Apps = apps,
                 Promoted = promoted, Relegated = relegated,
+                Matches = matches, SeasonRating = seasonRating,
+                MarketValue = MarketValueOf(overall, age, tier),
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
                 LeaguePosition = leaguePosition,
@@ -992,6 +1005,7 @@ public sealed class CareerSimulator
             {
                 Age = season.Age, Overall = season.Overall, ClubTier = season.ClubTier, ClubName = season.ClubName,
                 ClubCountry = season.ClubCountry,
+                Matches = season.Matches, SeasonRating = season.SeasonRating, MarketValue = season.MarketValue,
                 Apps = season.Apps, Goals = season.Goals, Assists = season.Assists,
                 Tackles = season.Tackles, CleanSheets = season.CleanSheets,
                 LeaguePosition = season.LeaguePosition, LeagueTable = season.LeagueTable, Injury = season.Injury,
@@ -1148,7 +1162,12 @@ public sealed class CareerSimulator
     /// a força de base do próprio clube (ver ClubDirectory.BaseStrength) mais um ruído
     /// fixo pra a tabela não ficar idêntica toda temporada.
     /// </summary>
-    private (int Position, List<LeagueTableRow> Table) SimulateLeagueTable(
+    /// <summary>Uma partida do jogador extraída da própria simulação de pontos corridos
+    /// (modo "jogo a jogo"). Outcome: 1=vitória, 0=empate, -1=derrota, do ponto de vista
+    /// do clube do jogador.</summary>
+    private readonly record struct PlayerFixture(string Opponent, bool Home, int Outcome);
+
+    private (int Position, List<LeagueTableRow> Table, List<PlayerFixture> Fixtures) SimulateLeagueTable(
         string ownClub, double ownStrength, IReadOnlyList<string> rivals, string countryName, Pcg32 rng)
     {
         var strength = new Dictionary<string, double> { [ownClub] = ownStrength };
@@ -1157,6 +1176,10 @@ public sealed class CareerSimulator
 
         var points = strength.Keys.ToDictionary(k => k, _ => 0);
         var names = strength.Keys.ToList();
+        // Partidas do PRÓPRIO jogador, capturadas da mesma simulação que decide os
+        // pontos — nunca um segundo sorteio paralelo, senão placar e classificação
+        // poderiam se contradizer ("ganhei 3 jogos mas a tabela diz 0 pontos").
+        var fixtures = new List<PlayerFixture>();
         for (int round = 0; round < 2; round++)
         {
             for (int i = 0; i < names.Count; i++)
@@ -1167,9 +1190,18 @@ public sealed class CareerSimulator
                     double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
                     double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
                     double roll = rng.NextDouble();
-                    if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; }
-                    else if (roll < drawChance + (1 - drawChance) * pHome) points[names[i]] += 3;
-                    else points[names[j]] += 3;
+                    // outcomeI: resultado do ponto de vista de names[i].
+                    int outcomeI;
+                    if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; outcomeI = 0; }
+                    else if (roll < drawChance + (1 - drawChance) * pHome) { points[names[i]] += 3; outcomeI = 1; }
+                    else { points[names[j]] += 3; outcomeI = -1; }
+
+                    // Mando de campo é rótulo (o modelo de força não tem fator casa):
+                    // no returno inverte, pra cada par jogar uma em casa e uma fora.
+                    if (names[i] == ownClub)
+                        fixtures.Add(new PlayerFixture(names[j], round == 0, outcomeI));
+                    else if (names[j] == ownClub)
+                        fixtures.Add(new PlayerFixture(names[i], round != 0, -outcomeI));
                 }
             }
         }
@@ -1182,7 +1214,129 @@ public sealed class CareerSimulator
 
         int position = ranked.IndexOf(ownClub) + 1;
         var table = ranked.Select(n => new LeagueTableRow(n, points[n], n == ownClub)).ToList();
-        return (position, table);
+        return (position, table, fixtures);
+    }
+
+    /// <summary>
+    /// Detalha as partidas do jogador (modo "jogo a jogo") a partir dos resultados que a
+    /// tabela JÁ decidiu: inventa um placar plausível pra cada vitória/empate/derrota e
+    /// espalha os gols/assistências que a temporada já fechou pelas partidas em que ele
+    /// entrou em campo. Usa um RNG DERIVADO (domínio "matches") em vez do rng da
+    /// carreira — assim detalhar partidas não consome nenhum sorteio do fluxo principal
+    /// e não muda nada do que já estava calibrado (Monte Carlo continua idêntico).
+    /// </summary>
+    private static List<MatchResult> BuildMatches(
+        ulong seed, int age, IReadOnlyList<PlayerFixture> fixtures,
+        int apps, int goals, int assists, double perf)
+    {
+        var rng = Pcg32.Derive(seed, $"matches:{age}");
+        var matches = new List<MatchResult>(fixtures.Count);
+        if (fixtures.Count == 0) return matches;
+
+        // O laço da tabela gera TODAS as partidas em casa primeiro e depois todas fora
+        // (turno inteiro, depois returno). Um calendário assim não existe — intercala
+        // casa/fora aqui. Reordenar é de graça: este RNG é derivado, não é o da carreira.
+        var homeGames = fixtures.Where(f => f.Home).ToList();
+        var awayGames = fixtures.Where(f => !f.Home).ToList();
+        Shuffle(homeGames, rng);
+        Shuffle(awayGames, rng);
+        var ordered = new List<PlayerFixture>(fixtures.Count);
+        bool startHome = rng.Chance(0.5);
+        for (int i = 0; ordered.Count < fixtures.Count; i++)
+        {
+            var first = startHome ? homeGames : awayGames;
+            var second = startHome ? awayGames : homeGames;
+            if (i < first.Count) ordered.Add(first[i]);
+            if (i < second.Count) ordered.Add(second[i]);
+        }
+        fixtures = ordered;
+
+        // Quais rodadas o jogador disputou: `apps` da temporada pode ser maior que o
+        // número de rodadas da liga (conta copas/seleção) ou menor (lesão/rodízio).
+        int played = Math.Clamp(apps, 0, fixtures.Count);
+        var playedRounds = new HashSet<int>();
+        var pool = Enumerable.Range(0, fixtures.Count).ToList();
+        for (int i = 0; i < played && pool.Count > 0; i++)
+        {
+            int idx = rng.NextInt(0, pool.Count - 1);
+            playedRounds.Add(pool[idx]);
+            pool.RemoveAt(idx);
+        }
+
+        // Distribui gols/assistências só entre as partidas jogadas.
+        var playedList = playedRounds.OrderBy(r => r).ToList();
+        var goalsBy = new Dictionary<int, int>();
+        var assistsBy = new Dictionary<int, int>();
+        if (playedList.Count > 0)
+        {
+            for (int g = 0; g < goals; g++)
+            {
+                int r = playedList[rng.NextInt(0, playedList.Count - 1)];
+                goalsBy[r] = goalsBy.GetValueOrDefault(r) + 1;
+            }
+            for (int a = 0; a < assists; a++)
+            {
+                int r = playedList[rng.NextInt(0, playedList.Count - 1)];
+                assistsBy[r] = assistsBy.GetValueOrDefault(r) + 1;
+            }
+        }
+
+        for (int r = 0; r < fixtures.Count; r++)
+        {
+            var f = fixtures[r];
+            // Placar plausível a partir do resultado já decidido pela tabela.
+            int winner = 1 + rng.NextInt(0, 2);              // 1-3 gols pra quem venceu
+            int loser = winner - 1 - rng.NextInt(0, Math.Max(0, winner - 1)); // sempre menos
+            int drawGoals = rng.NextInt(0, 2);
+            int gf = f.Outcome switch { 1 => winner, -1 => Math.Max(0, loser), _ => drawGoals };
+            int ga = f.Outcome switch { 1 => Math.Max(0, loser), -1 => winner, _ => drawGoals };
+
+            bool didPlay = playedRounds.Contains(r);
+            int pg = didPlay ? Math.Min(goalsBy.GetValueOrDefault(r), gf) : 0;
+            int pa = didPlay ? assistsBy.GetValueOrDefault(r) : 0;
+
+            double rating = 0;
+            if (didPlay)
+            {
+                // Base pela forma da temporada, ajustada pelo que ele fez E pelo
+                // resultado do time — nota alta em derrota é possível, mas mais rara.
+                rating = 6.0 + perf / 40.0 + pg * 0.9 + pa * 0.5
+                       + f.Outcome * 0.35 + (rng.NextDouble() * 0.8 - 0.4);
+                rating = Math.Clamp(Math.Round(rating, 1), 3.0, 10.0);
+            }
+
+            matches.Add(new MatchResult(r + 1, f.Opponent, f.Home, gf, ga, pg, pa, didPlay, rating));
+        }
+
+        return matches;
+    }
+
+    /// <summary>Valor de mercado de vitrine, em milhões de euros — deriva de overall,
+    /// idade e nível do clube. Não entra em nenhum cálculo do motor nem no placar: é só
+    /// um número pra dashboard, no espírito dos sites de mercado.</summary>
+    private static double MarketValueOf(int overall, int age, int tier)
+    {
+        // Curva exponencial no overall (a diferença entre 85 e 90 vale muito mais que
+        // entre 60 e 65), com pico de idade por volta dos 25 e queda forte depois dos 30.
+        double baseValue = Math.Pow(Math.Max(0, overall - 40) / 10.0, 3.0) * 2.4;
+        double ageFactor = age <= 25 ? 0.55 + (age - 16) * 0.05
+                         : age <= 29 ? 1.0 - (age - 25) * 0.07
+                         : Math.Max(0.06, 0.72 - (age - 29) * 0.12);
+        double tierFactor = 0.75 + tier * 0.07;
+        // Piso de 0.1M: um profissional nunca "não vale nada" na vitrine, e 0.0M na
+        // tela parece bug em vez de número.
+        return Math.Max(0.1, Math.Round(baseValue * ageFactor * tierFactor, 1));
+    }
+
+    /// <summary>Fisher-Yates com o RNG informado — usado só na ordenação do calendário
+    /// (RNG derivado), nunca no fluxo principal da carreira.</summary>
+    private static void Shuffle<T>(List<T> list, Pcg32 rng)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = rng.NextInt(0, i);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
     }
 
     private static InjurySeverity RollInjury(Pcg32 rng, int age)

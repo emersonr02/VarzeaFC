@@ -60,10 +60,31 @@ export interface LeagueTableRow {
   isPlayerClub: boolean;
 }
 
+// Modo "jogo a jogo": uma partida do campeonato nacional. Os resultados vêm da MESMA
+// simulação de pontos corridos que monta a tabela, então placar e classificação nunca
+// se contradizem (ver CareerSimulator.BuildMatches).
+export interface MatchResult {
+  round: number;
+  opponent: string;
+  home: boolean;
+  goalsFor: number;
+  goalsAgainst: number;
+  playerGoals: number;
+  playerAssists: number;
+  played: boolean;
+  rating: number;
+}
+
 export interface SeasonResult {
   age: number;
   overall: number;
   clubTier: number;
+  // Partidas rodada a rodada (modo "jogo a jogo") — vazio se a carreira rodou sem
+  // detalhamento. seasonRating é a nota média das partidas em que jogou.
+  matches: MatchResult[];
+  seasonRating: number;
+  // Valor de mercado estimado em milhões de euros — número de vitrine, não entra no placar.
+  marketValue: number;
   // Nome do clube real (Roadmap pós-§9) — vem de clubs.json, nunca gerado no front.
   clubName: string;
   // País do CLUBE nesta temporada (roadmap pós-§9, transferência internacional) — NUNCA

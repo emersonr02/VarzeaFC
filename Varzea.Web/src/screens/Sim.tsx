@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { PendingContractChoice, Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
+import type { MatchResult, PendingContractChoice, Pos, SeasonRequestKind, SeasonResult, TitleKind } from "../api/types";
+import type { Pace } from "./ModeSelect";
 import { buildClipsForSeasons, type ClipData } from "../data/clips";
 import { useClubLogo } from "../data/clubLogos";
 import { dilemmaLine } from "../data/dilemmas";
@@ -27,17 +28,30 @@ interface Props {
   position: Pos;
   role: string;
   potential: number;
+  pace: Pace;
   initialToken: string;
   onExit: () => void;
   onFinished: (token: string) => void;
 }
 
-export function Sim({ nickname, country, position, role, potential, initialToken, onExit, onFinished }: Props) {
+// O que já está na timeline. No modo "jogo a jogo" as partidas entram uma a uma ANTES
+// do recorte da temporada correspondente — mesma simulação, só revelada mais devagar.
+type Shown =
+  | { t: "clip"; c: Exclude<ClipData, PendingPause> }
+  | { t: "match"; m: MatchResult; club: string; age: number };
+
+export function Sim({ nickname, country, position, role, potential, pace, initialToken, onExit, onFinished }: Props) {
   const [token, setToken] = useState(initialToken);
   const [queue, setQueue] = useState<ClipData[]>([]);
   // Só temporada/final/prêmio/aposentadoria — ofertas e propostas de contrato NUNCA
   // entram aqui (ver pendingPause abaixo), então não precisam de estado de "resolvido".
-  const [displayed, setDisplayed] = useState<Exclude<ClipData, PendingPause>[]>([]);
+  const [displayed, setDisplayed] = useState<Shown[]>([]);
+  // Modo "jogo a jogo": partidas ainda não reveladas da temporada corrente. Enquanto
+  // tiver partida aqui, "Avançar" revela a próxima em vez de puxar temporada nova.
+  const [pendingMatches, setPendingMatches] = useState<{ m: MatchResult; club: string; age: number }[]>([]);
+  // Recorte da temporada cujas partidas ainda estão sendo reveladas — entra na timeline
+  // só depois da última partida.
+  const [pendingSeasonClip, setPendingSeasonClip] = useState<Exclude<ClipData, PendingPause> | null>(null);
   const [finished, setFinished] = useState(false);
   // Notificação de oferta/proposta pendente — fora da timeline das rodadas (ver
   // PendingPauseNotification). Só existe uma pausa por vez, nunca junto com a outra.
@@ -109,10 +123,29 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     setDash(dashFrom(head));
     if (isPause(head)) {
       setPendingPause(head);
-    } else {
-      setLastSeason(head.season);
-      setDisplayed((prev) => [...prev, head]);
+      return;
     }
+    setLastSeason(head.season);
+    // Modo "jogo a jogo": enfileira as partidas da temporada pra serem reveladas uma a
+    // uma nos próximos cliques; o recorte da temporada fica guardado e só entra na
+    // timeline depois da última partida (NÃO volta pra `queue`, senão popAndDisplay
+    // reenfileiraria as mesmas partidas pra sempre).
+    if (pace === "match" && head.kind === "season" && head.season.matches.length > 0) {
+      setPendingMatches(
+        head.season.matches.map((m) => ({ m, club: head.season.clubName, age: head.season.age }))
+      );
+      setPendingSeasonClip(head);
+      return;
+    }
+    setDisplayed((prev) => [...prev, { t: "clip", c: head }]);
+  }
+
+  // Revela a próxima partida da temporada corrente (modo "jogo a jogo"). Quando a lista
+  // esvazia, o clique seguinte solta o resumo da temporada (ver handleAdvance).
+  function revealNextMatch() {
+    const [next, ...rest] = pendingMatches;
+    setPendingMatches(rest);
+    setDisplayed((prev) => [...prev, { t: "match", m: next.m, club: next.club, age: next.age }]);
   }
 
   // Painel Contrato + Técnico: só dá pra anexar um pedido novo quando esta chamada vai
@@ -120,11 +153,25 @@ export function Sim({ nickname, country, position, role, potential, initialToken
   // já buscado (senão o pedido cairia numa temporada que o motor já revelou noutra
   // chamada, fora de ordem). Casa com a mesma janela em que "Avançar" vira rede de
   // verdade em vez de só paginar localmente.
-  const canRequest = queue.length === 0 && !finished && pendingPause === null && !loading;
+  const canRequest = queue.length === 0 && !finished && pendingPause === null && !loading
+    && pendingMatches.length === 0 && pendingSeasonClip === null;
 
   async function handleAdvance() {
     if (pendingPause !== null || loading) return;
     setError(null);
+    // Jogo a jogo: enquanto houver partida da temporada corrente, cada clique revela
+    // uma — só depois o resumo da temporada e a temporada seguinte.
+    if (pendingMatches.length > 0) {
+      revealNextMatch();
+      return;
+    }
+    // Acabaram as partidas: solta o resumo da temporada antes de puxar a próxima.
+    if (pendingSeasonClip) {
+      const clip = pendingSeasonClip;
+      setPendingSeasonClip(null);
+      setDisplayed((prev) => [...prev, { t: "clip", c: clip }]);
+      return;
+    }
     if (queue.length > 0) {
       popAndDisplay(queue);
       return;
@@ -185,6 +232,14 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     setError(null);
     setPendingRequest(null); // Pular tudo não faz pedidos do painel Contrato + Técnico
     setPendingPause(null); // Pulando tudo, qualquer pausa em tela é resolvida direto abaixo
+    // Pular tudo ignora o detalhamento partida a partida — o resumo pendente ainda
+    // entra na timeline pra não sumir uma temporada já simulada.
+    setPendingMatches([]);
+    if (pendingSeasonClip) {
+      const clip = pendingSeasonClip;
+      setPendingSeasonClip(null);
+      setDisplayed((prev) => [...prev, { t: "clip", c: clip }]);
+    }
     try {
       let pendingQueue = [...queue];
       let currentToken = token;
@@ -213,7 +268,7 @@ export function Sim({ nickname, country, position, role, potential, initialToken
         } else if (pendingQueue.length > 0) {
           const clip = pendingQueue.shift()!;
           if (!isPause(clip)) {
-            setDisplayed((prev) => [...prev, clip]);
+            setDisplayed((prev) => [...prev, { t: "clip", c: clip }]);
             setLastSeason(clip.season);
           }
           setDash(dashFrom(clip));
@@ -234,7 +289,8 @@ export function Sim({ nickname, country, position, role, potential, initialToken
     }
   }
 
-  const canFinish = finished && queue.length === 0 && pendingPause === null;
+  const canFinish = finished && queue.length === 0 && pendingPause === null
+    && pendingMatches.length === 0 && pendingSeasonClip === null;
 
   return (
     <section className="screen pitch-bg">
@@ -280,9 +336,13 @@ export function Sim({ nickname, country, position, role, potential, initialToken
         )}
 
         <div className="ticker-wrap" ref={tickerRef}>
-          {displayed.map((clip, i) => (
-            <Clip key={i} clip={clip} nickname={nickname} country={country} clubFor={clubFor} />
-          ))}
+          {displayed.map((item, i) =>
+            item.t === "match" ? (
+              <MatchClip key={i} match={item.m} club={item.club} />
+            ) : (
+              <Clip key={i} clip={item.c} nickname={nickname} country={country} clubFor={clubFor} />
+            )
+          )}
           {displayed.length === 0 && !loading && (
             <p className="empty-msg">Clique em "Avançar" pra começar sua primeira temporada.</p>
           )}
@@ -294,8 +354,22 @@ export function Sim({ nickname, country, position, role, potential, initialToken
           ) : (
             <>
               <button className="btn rust" disabled={loading || pendingPause !== null} onClick={handleAdvance}>
-                {loading ? "Carregando…" : pendingPause !== null ? "Aguardando sua decisão…" : "Avançar →"}
+                {loading ? "Carregando…"
+                  : pendingPause !== null ? "Aguardando sua decisão…"
+                  : pendingMatches.length > 0 ? `Próxima partida (${pendingMatches.length} restantes) →`
+                  : pendingSeasonClip ? "Ver resumo da temporada →"
+                  : "Avançar →"}
               </button>
+              {pendingMatches.length > 0 && (
+                <button
+                  className="btn secondary"
+                  disabled={loading}
+                  onClick={() => {
+                    // Pula o resto das partidas desta temporada e vai direto pro resumo.
+                    setPendingMatches([]);
+                  }}
+                >Pular pro fim da temporada ⏩</button>
+              )}
               <button className="btn secondary" disabled={loading || pendingPause !== null} onClick={handleSkipAll}>Pular tudo ⏭</button>
             </>
           )}
@@ -608,6 +682,49 @@ function ClubStatusCard({ season, country }: { season: SeasonResult; country: st
           <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--paper2)" }}>Tabela completa · {leagueName}</div>
           <LeagueTableView rows={tableRows} dark />
         </div>
+      )}
+    </div>
+  );
+}
+
+// Modo "jogo a jogo": um recorte por partida, com placar, mando de campo, o que o
+// jogador fez e a nota. Verde/vermelho/cinza pela borda = vitória/derrota/empate.
+function MatchClip({ match, club }: { match: MatchResult; club: string }) {
+  const won = match.goalsFor > match.goalsAgainst;
+  const drew = match.goalsFor === match.goalsAgainst;
+  const edge = won ? "#27ae60" : drew ? "#8a8a8a" : "#c0392b";
+  const label = won ? "Vitória" : drew ? "Empate" : "Derrota";
+  const home = match.home ? club : match.opponent;
+  const away = match.home ? match.opponent : club;
+  const homeGoals = match.home ? match.goalsFor : match.goalsAgainst;
+  const awayGoals = match.home ? match.goalsAgainst : match.goalsFor;
+
+  return (
+    <div className="clip clip-match" style={{ borderLeftColor: edge }}>
+      <div className="season-tag" style={{ color: edge }}>
+        Rodada {match.round} · {match.home ? "Casa" : "Fora"} · {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "3px 0 2px" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+          <ClubBadge clubName={home} size={20} />
+          <span style={{ fontWeight: match.home ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{home}</span>
+        </span>
+        <span style={{ fontFamily: "var(--font-d)", fontSize: 18, whiteSpace: "nowrap" }}>
+          {homeGoals} <span style={{ opacity: 0.5 }}>×</span> {awayGoals}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0, justifyContent: "flex-end" }}>
+          <span style={{ fontWeight: !match.home ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{away}</span>
+          <ClubBadge clubName={away} size={20} />
+        </span>
+      </div>
+      {match.played ? (
+        <div className="stats-line">
+          {match.playerGoals > 0 && <>⚽ {match.playerGoals} {match.playerGoals === 1 ? "gol" : "gols"} · </>}
+          {match.playerAssists > 0 && <>🎯 {match.playerAssists} assist. · </>}
+          Nota <b>{match.rating.toFixed(1)}</b>
+        </div>
+      ) : (
+        <div className="body" style={{ fontStyle: "italic", opacity: 0.75 }}>Você não entrou em campo nesta rodada.</div>
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { Album } from "./screens/Album";
 import { ClubSelect } from "./screens/ClubSelect";
 import { Draft } from "./screens/Draft";
 import { Home } from "./screens/Home";
-import { ModeSelect } from "./screens/ModeSelect";
+import { ModeSelect, type Pace } from "./screens/ModeSelect";
 import { PositionSelect } from "./screens/PositionSelect";
 import { Result } from "./screens/Result";
 import { Reveal } from "./screens/Reveal";
@@ -16,6 +16,10 @@ type Screen = "home" | "setup" | "draft" | "position" | "reveal" | "clubs" | "mo
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
+  // Ritmo escolhido em ModeSelect: "season" resolve a temporada inteira por clique,
+  // "match" revela partida por partida (as duas usam a MESMA simulação — o modo jogo a
+  // jogo só pagina localmente as partidas que a temporada já trouxe).
+  const [pace, setPace] = useState<Pace>("season");
   const [countries, setCountries] = useState<string[]>([]);
   const [metaError, setMetaError] = useState<string | null>(null);
 
@@ -241,7 +245,10 @@ export default function App() {
       )}
 
       {screen === "mode" && (
-        <ModeSelect onChooseSeasonBySeason={() => setScreen("sim")} onBack={() => setScreen("reveal")} />
+        <ModeSelect
+          onChoose={(p) => { setPace(p); setScreen("sim"); }}
+          onBack={() => setScreen("reveal")}
+        />
       )}
 
       {screen === "sim" && position && token && (
@@ -251,6 +258,7 @@ export default function App() {
           position={position}
           role={role}
           potential={potential}
+          pace={pace}
           initialToken={token}
           onExit={() => setScreen("home")}
           onFinished={(finalToken) => {

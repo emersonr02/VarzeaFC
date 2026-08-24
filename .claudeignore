@@ -1,0 +1,11 @@
+node_modules/
+bin/
+obj/
+dist/
+build/
+coverage/
+*.log
+*.lock
+*.svg
+.git/
+docs/graphs/raw/
