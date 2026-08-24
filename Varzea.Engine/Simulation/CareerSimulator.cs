@@ -576,7 +576,8 @@ public sealed class CareerSimulator
             // perf (bom o bastante pra puxar o time, ruim o bastante pra afundar).
             var rivals = _clubs.LeagueRivals(clubCountry, tier, clubName);
             double ownStrength = _clubs.BaseStrength(clubCountry, clubName) + perf;
-            var (leaguePosition, leagueTable, fixtures) = SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng);
+            var (leaguePosition, leagueTable, fixtures, roundStandings) =
+                SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng, captureRoundStandings: includeMatches);
 
             // Modo "jogo a jogo": detalha as partidas a partir dos resultados que a
             // tabela já decidiu. RNG derivado — não consome nada do fluxo da carreira.
@@ -612,6 +613,7 @@ public sealed class CareerSimulator
                 Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry, Apps = apps,
                 Promoted = promoted, Relegated = relegated,
                 Matches = matches, SeasonRating = seasonRating,
+                RoundStandings = roundStandings,
                 MarketValue = MarketValueOf(overall, age, tier),
                 Goals = sg, Assists = sa, Tackles = st, CleanSheets = scs,
                 Injury = injury,
@@ -814,7 +816,7 @@ public sealed class CareerSimulator
                     // Jogador já avisou (painel Contrato, roadmap pós-§9) que quer sair
                     // quando o contrato vencesse — pula a rolagem de renovação e vai
                     // direto pro caminho de "não renovou".
-                    contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng);
+                    contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng, currentClub: clubName);
                     wantsToLeaveAtContractEnd = false;
                 }
                 else
@@ -830,7 +832,7 @@ public sealed class CareerSimulator
                     }
                     else
                     {
-                        contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng);
+                        contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng, currentClub: clubName);
                     }
                 }
             }
@@ -861,7 +863,7 @@ public sealed class CareerSimulator
                 else if (perf > 14 && tier < 5 && rng.Chance(0.45)) { triggered = true; direction = true; }
                 else if ((perf < -16 || moralPressure) && tier > 1 && rng.Chance(moralPressure ? 0.45 : 0.30)) { triggered = true; direction = false; }
                 else if (tier < 5 && rng.Chance(scoutingChance)) { triggered = true; direction = true; }
-                if (triggered) contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng, direction);
+                if (triggered) contractProposals = GenerateContractProposals(clubCountry, tier, overall, target, rng, direction, currentClub: clubName);
             }
 
             bool accepted = false;
@@ -883,6 +885,7 @@ public sealed class CareerSimulator
                 if (choice >= 0 && choice < contractProposals.Count)
                 {
                     accepted = true;
+                    string previousClubName = clubName;
                     upgrade = contractProposals[choice].Upgrade;
                     tier = Math.Clamp(contractProposals[choice].ClubTier, 1, 5);
                     // O clube é o MESMO já sorteado quando a proposta foi gerada (ver
@@ -901,7 +904,12 @@ public sealed class CareerSimulator
                     // igual a qualquer outra mudança de clube) — cancela um acesso/
                     // rebaixamento automático que essa mesma temporada tenha disparado,
                     // senão o topo do próximo loop sobrescreveria o clube recém-aceito.
-                    pendingAutoTier = -1;
+                    // Só vale quando o clube REALMENTE muda: se o jogador "aceitou" ficar
+                    // onde já estava, ele desce/sobe junto com o clube, senão dava pra
+                    // driblar um rebaixamento sem sair do lugar (bug real relatado:
+                    // "meu time foi rebaixado e no ano seguinte disputou a mesma liga").
+                    if (contractProposals[choice].ClubName != previousClubName)
+                        pendingAutoTier = -1;
                 }
                 // choice inválido/-1: accepted fica false, tier não muda aqui — o bloco de
                 // reinício de contrato mais abaixo já trata "recusou todas" como o
@@ -1006,6 +1014,7 @@ public sealed class CareerSimulator
                 Age = season.Age, Overall = season.Overall, ClubTier = season.ClubTier, ClubName = season.ClubName,
                 ClubCountry = season.ClubCountry,
                 Matches = season.Matches, SeasonRating = season.SeasonRating, MarketValue = season.MarketValue,
+                RoundStandings = season.RoundStandings,
                 Apps = season.Apps, Goals = season.Goals, Assists = season.Assists,
                 Tackles = season.Tackles, CleanSheets = season.CleanSheets,
                 LeaguePosition = season.LeaguePosition, LeagueTable = season.LeagueTable, Injury = season.Injury,
@@ -1094,7 +1103,8 @@ public sealed class CareerSimulator
     private const int InternationalOverallThreshold = 80;
 
     private List<ContractProposalOption> GenerateContractProposals(
-        string country, int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null)
+        string country, int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null,
+        string? currentClub = null)
     {
         var proposals = new List<ContractProposalOption>();
 
@@ -1122,13 +1132,13 @@ public sealed class CareerSimulator
         // proposta do Porto Imperial e fui parar no RB Leipzig" — nomes inventados sem
         // nenhuma relação com o clube de verdade sorteado só na hora de aceitar).
         proposals.Add(new ContractProposalOption(primaryTier, international || qualifiesUpgrade,
-            _clubs.PickClub(primaryCountry, primaryTier, rng), primaryCountry));
+            _clubs.PickClub(primaryCountry, primaryTier, rng, currentClub), primaryCountry));
 
         // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) —
         // chance cresce com o overall, representando mais clubes de olho num jogador bom.
         double lateralChance = Math.Clamp((overall - 65) / 45.0, 0.15, 0.85);
         if (rng.Chance(lateralChance) && primaryTier != tier)
-            proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng), country));
+            proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng, currentClub), country));
 
         // Terceira proposta: "esticada" — só pra quem está muito bem, um clube ainda
         // maior que o da proposta principal.
@@ -1136,7 +1146,7 @@ public sealed class CareerSimulator
         {
             int stretchTier = Math.Clamp(tier + 1, 1, 5);
             if (!proposals.Any(p => p.ClubTier == stretchTier))
-                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng), country));
+                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng, currentClub), country));
         }
 
         return proposals;
@@ -1167,8 +1177,10 @@ public sealed class CareerSimulator
     /// do clube do jogador.</summary>
     private readonly record struct PlayerFixture(string Opponent, bool Home, int Outcome);
 
-    private (int Position, List<LeagueTableRow> Table, List<PlayerFixture> Fixtures) SimulateLeagueTable(
-        string ownClub, double ownStrength, IReadOnlyList<string> rivals, string countryName, Pcg32 rng)
+    private (int Position, List<LeagueTableRow> Table, List<PlayerFixture> Fixtures,
+             List<IReadOnlyList<LeagueTableRow>> RoundStandings) SimulateLeagueTable(
+        string ownClub, double ownStrength, IReadOnlyList<string> rivals, string countryName, Pcg32 rng,
+        bool captureRoundStandings)
     {
         var strength = new Dictionary<string, double> { [ownClub] = ownStrength };
         foreach (var rival in rivals)
@@ -1180,41 +1192,83 @@ public sealed class CareerSimulator
         // pontos — nunca um segundo sorteio paralelo, senão placar e classificação
         // poderiam se contradizer ("ganhei 3 jogos mas a tabela diz 0 pontos").
         var fixtures = new List<PlayerFixture>();
-        for (int round = 0; round < 2; round++)
-        {
-            for (int i = 0; i < names.Count; i++)
-            {
-                for (int j = i + 1; j < names.Count; j++)
-                {
-                    double diff = strength[names[i]] - strength[names[j]];
-                    double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
-                    double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
-                    double roll = rng.NextDouble();
-                    // outcomeI: resultado do ponto de vista de names[i].
-                    int outcomeI;
-                    if (roll < drawChance) { points[names[i]] += 1; points[names[j]] += 1; outcomeI = 0; }
-                    else if (roll < drawChance + (1 - drawChance) * pHome) { points[names[i]] += 3; outcomeI = 1; }
-                    else { points[names[j]] += 3; outcomeI = -1; }
+        // Classificação ao FIM de cada rodada (tabela "simultânea"): sem isso não dá
+        // pra mostrar a tabela evoluindo junto com o jogo a jogo, porque o laço antigo
+        // era "todos os pares do turno, depois todos do returno" — não existia rodada.
+        var roundStandings = new List<IReadOnlyList<LeagueTableRow>>();
 
-                    // Mando de campo é rótulo (o modelo de força não tem fator casa):
-                    // no returno inverte, pra cada par jogar uma em casa e uma fora.
-                    if (names[i] == ownClub)
-                        fixtures.Add(new PlayerFixture(names[j], round == 0, outcomeI));
-                    else if (names[j] == ownClub)
-                        fixtures.Add(new PlayerFixture(names[i], round != 0, -outcomeI));
-                }
+        foreach (var round in BuildSchedule(names))
+        {
+            foreach (var (home, away) in round)
+            {
+                double diff = strength[home] - strength[away];
+                double pHome = 1.0 / (1.0 + Math.Pow(10, -diff / EloScale));
+                double drawChance = Math.Clamp(BaseDrawChance - Math.Abs(diff) * 0.002, 0.10, 0.30);
+                double roll = rng.NextDouble();
+                int outcomeHome;
+                if (roll < drawChance) { points[home] += 1; points[away] += 1; outcomeHome = 0; }
+                else if (roll < drawChance + (1 - drawChance) * pHome) { points[home] += 3; outcomeHome = 1; }
+                else { points[away] += 3; outcomeHome = -1; }
+
+                if (home == ownClub) fixtures.Add(new PlayerFixture(away, true, outcomeHome));
+                else if (away == ownClub) fixtures.Add(new PlayerFixture(home, false, -outcomeHome));
             }
+            if (captureRoundStandings) roundStandings.Add(RankTable(names, points, strength, ownClub));
         }
 
-        var ranked = names
-            .OrderByDescending(n => points[n])
-            .ThenByDescending(n => strength[n])
-            .ThenBy(n => n, StringComparer.Ordinal)
-            .ToList();
+        var table = RankTable(names, points, strength, ownClub);
+        int position = table.ToList().FindIndex(r => r.IsPlayerClub) + 1;
+        return (position, table.ToList(), fixtures, roundStandings);
+    }
 
-        int position = ranked.IndexOf(ownClub) + 1;
-        var table = ranked.Select(n => new LeagueTableRow(n, points[n], n == ownClub)).ToList();
-        return (position, table, fixtures);
+    /// <summary>Ordena a classificação pelos critérios de sempre (pontos, depois força,
+    /// depois nome) — extraído porque agora é usado tanto no fim quanto a cada rodada
+    /// (tabela "simultânea").</summary>
+    private static IReadOnlyList<LeagueTableRow> RankTable(
+        List<string> names, Dictionary<string, int> points, Dictionary<string, double> strength, string ownClub) =>
+        names.OrderByDescending(n => points[n])
+             .ThenByDescending(n => strength[n])
+             .ThenBy(n => n, StringComparer.Ordinal)
+             .Select(n => new LeagueTableRow(n, points[n], n == ownClub))
+             .ToList();
+
+    /// <summary>
+    /// Calendário de pontos corridos de verdade (método do círculo): N-1 rodadas por
+    /// turno, e em CADA rodada todo clube joga exatamente uma vez — é isso que permite
+    /// a tabela evoluir junto com as partidas ("tabela simultânea"). Antes o laço era
+    /// "todos os pares", sem noção de rodada: dava o mesmo total de jogos, mas não dava
+    /// pra dizer em que rodada cada um aconteceu, e o clube do jogador acabava com o
+    /// turno inteiro em casa. Mando alterna por rodada e inverte no returno.
+    /// </summary>
+    private static List<List<(string Home, string Away)>> BuildSchedule(List<string> clubs)
+    {
+        const string Bye = " BYE";
+        var list = new List<string>(clubs);
+        if (list.Count % 2 != 0) list.Add(Bye); // divisão ímpar: um folga por rodada
+        int n = list.Count, roundsPerLeg = n - 1;
+        var schedule = new List<List<(string, string)>>();
+
+        for (int leg = 0; leg < 2; leg++)
+        {
+            var rot = new List<string>(list);
+            for (int r = 0; r < roundsPerLeg; r++)
+            {
+                var round = new List<(string, string)>();
+                for (int k = 0; k < n / 2; k++)
+                {
+                    string a = rot[k], b = rot[n - 1 - k];
+                    if (a == Bye || b == Bye) continue;
+                    bool aHome = (r % 2 == 0) ^ (leg == 1);
+                    round.Add(aHome ? (a, b) : (b, a));
+                }
+                schedule.Add(round);
+                // Rotaciona todos menos o primeiro — o círculo do método.
+                var tail = rot[n - 1];
+                rot.RemoveAt(n - 1);
+                rot.Insert(1, tail);
+            }
+        }
+        return schedule;
     }
 
     /// <summary>
@@ -1233,23 +1287,8 @@ public sealed class CareerSimulator
         var matches = new List<MatchResult>(fixtures.Count);
         if (fixtures.Count == 0) return matches;
 
-        // O laço da tabela gera TODAS as partidas em casa primeiro e depois todas fora
-        // (turno inteiro, depois returno). Um calendário assim não existe — intercala
-        // casa/fora aqui. Reordenar é de graça: este RNG é derivado, não é o da carreira.
-        var homeGames = fixtures.Where(f => f.Home).ToList();
-        var awayGames = fixtures.Where(f => !f.Home).ToList();
-        Shuffle(homeGames, rng);
-        Shuffle(awayGames, rng);
-        var ordered = new List<PlayerFixture>(fixtures.Count);
-        bool startHome = rng.Chance(0.5);
-        for (int i = 0; ordered.Count < fixtures.Count; i++)
-        {
-            var first = startHome ? homeGames : awayGames;
-            var second = startHome ? awayGames : homeGames;
-            if (i < first.Count) ordered.Add(first[i]);
-            if (i < second.Count) ordered.Add(second[i]);
-        }
-        fixtures = ordered;
+        // A ordem das partidas já é a do calendário real (BuildSchedule, método do
+        // círculo), com mando alternando por rodada — não precisa mais reordenar aqui.
 
         // Quais rodadas o jogador disputou: `apps` da temporada pode ser maior que o
         // número de rodadas da liga (conta copas/seleção) ou menor (lesão/rodízio).

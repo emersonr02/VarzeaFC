@@ -82,6 +82,9 @@ export interface SeasonResult {
   // Partidas rodada a rodada (modo "jogo a jogo") — vazio se a carreira rodou sem
   // detalhamento. seasonRating é a nota média das partidas em que jogou.
   matches: MatchResult[];
+  // Classificação ao fim de cada rodada — deixa a tabela evoluir junto com o modo jogo
+  // a jogo ("tabela simultânea"). Mesmo índice das partidas.
+  roundStandings: LeagueTableRow[][];
   seasonRating: number;
   // Valor de mercado estimado em milhões de euros — número de vitrine, não entra no placar.
   marketValue: number;

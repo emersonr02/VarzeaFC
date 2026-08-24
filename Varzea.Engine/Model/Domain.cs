@@ -138,6 +138,12 @@ public sealed class SeasonResult
     /// ver CareerSimulator.RunCareer(includeMatches).</summary>
     public IReadOnlyList<MatchResult> Matches { get; init; } = Array.Empty<MatchResult>();
 
+    /// <summary>Classificação ao FIM de cada rodada — permite a tabela evoluir junto com
+    /// o modo jogo a jogo ("tabela simultânea"). Mesmo gate de Matches: só vem
+    /// preenchido quando a carreira roda com detalhamento de partidas.</summary>
+    public IReadOnlyList<IReadOnlyList<LeagueTableRow>> RoundStandings { get; init; } =
+        Array.Empty<IReadOnlyList<LeagueTableRow>>();
+
     /// <summary>Nota média da temporada (0-10), média das partidas em que jogou —
     /// 0 quando não há detalhamento de partidas.</summary>
     public double SeasonRating { get; init; }

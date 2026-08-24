@@ -226,3 +226,43 @@ body {
 .kv { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--paper2); padding: 2px 0; }
 .kv b { color: #fff; font-weight: 700; }
 .player-avatar { width: 38px; height: 38px; min-width: 38px; border-radius: 50%; background: var(--blue); border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: var(--font-d); color: #fff; font-size: 17px; }
+
+/* ---- Botões mais vivos (pedido do usuário) --------------------------------
+   Mantém a essência (dourado/creme sobre gramado), mas com brilho, relevo maior
+   e reação ao passar o mouse — antes eram chapados e "sumiam" na tela. */
+.btn {
+  position: relative;
+  background: linear-gradient(180deg, #ffd95e 0%, var(--gold) 55%, #e0af22 100%);
+  box-shadow: 0 5px 0 var(--gold-deep), 0 8px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 0 var(--gold-deep), 0 12px 22px rgba(0, 0, 0, 0.4); }
+.btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 var(--gold-deep), 0 3px 8px rgba(0, 0, 0, 0.3); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.4); }
+.btn.rust {
+  background: linear-gradient(180deg, #e2653f 0%, var(--rust) 55%, var(--rust-deep) 100%);
+  box-shadow: 0 5px 0 var(--rust-deep), 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+.btn.rust:hover:not(:disabled) { box-shadow: 0 6px 0 var(--rust-deep), 0 12px 22px rgba(0, 0, 0, 0.4); }
+.btn.secondary {
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(243, 195, 50, 0.55);
+  color: var(--paper);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+.btn.secondary:hover:not(:disabled) { background: rgba(243, 195, 50, 0.16); border-color: var(--gold); transform: translateY(-1px); }
+
+/* Botão principal pulsa de leve pra o jogador sempre saber onde clicar. */
+.btn.rust:not(:disabled) { animation: pulseCta 2.6s ease-in-out infinite; }
+@keyframes pulseCta {
+  0%, 100% { box-shadow: 0 5px 0 var(--rust-deep), 0 8px 18px rgba(0, 0, 0, 0.35); }
+  50% { box-shadow: 0 5px 0 var(--rust-deep), 0 8px 26px rgba(226, 101, 63, 0.5); }
+}
+@media (prefers-reduced-motion: reduce) { .btn.rust:not(:disabled) { animation: none; } }
+
+.btn-mini { transition: transform 0.1s ease, filter 0.15s ease; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.22); }
+.btn-mini:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-mini.accept { background: linear-gradient(180deg, #ffd95e, var(--gold)); }
+
+/* Etiqueta "ao vivo" da tabela simultânea. */
+.live-tag { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-b); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #ff6b5a; white-space: nowrap; }

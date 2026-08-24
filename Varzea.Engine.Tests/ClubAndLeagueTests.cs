@@ -286,4 +286,48 @@ public class ClubAndLeagueTests
 
         Assert.True(checkedSeasons > 100, $"amostra pequena demais ({checkedSeasons} temporadas)");
     }
+
+    /// <summary>Tabela "simultânea": há uma classificação por rodada, ela cresce de
+    /// forma monótona (pontos nunca diminuem) e a última rodada bate exatamente com a
+    /// tabela final da temporada.</summary>
+    [Fact]
+    public void RoundStandings_EvolveMonotonically_AndEndEqualToTheFinalTable()
+    {
+        var sim = new CareerSimulator(Rules, Clubs);
+        int checkedSeasons = 0;
+
+        foreach (var country in new[] { "Brasil", "Alemanha" })
+        {
+            for (ulong seed = 1; seed <= 10; seed++)
+            {
+                var result = sim.SimulateCareer(BaseRecipe(seed, country), includeMatches: true);
+                foreach (var s in result.Timeline)
+                {
+                    if (s.LeagueTable.Count == 0) continue;
+                    checkedSeasons++;
+
+                    // Uma rodada por partida do jogador (todo clube joga uma vez por rodada).
+                    Assert.Equal(s.Matches.Count, s.RoundStandings.Count);
+
+                    // Toda rodada lista a divisão inteira.
+                    Assert.All(s.RoundStandings, r => Assert.Equal(s.LeagueTable.Count, r.Count));
+
+                    // Pontos de cada clube nunca caem de uma rodada pra outra.
+                    for (int r = 1; r < s.RoundStandings.Count; r++)
+                    {
+                        var prev = s.RoundStandings[r - 1].ToDictionary(x => x.ClubName, x => x.Points);
+                        foreach (var row in s.RoundStandings[r])
+                            Assert.True(row.Points >= prev[row.ClubName],
+                                $"pontos de {row.ClubName} caíram na rodada {r}");
+                    }
+
+                    // A última rodada é a tabela final.
+                    var last = s.RoundStandings[^1];
+                    Assert.Equal(s.LeagueTable.Select(r => (r.ClubName, r.Points)), last.Select(r => (r.ClubName, r.Points)));
+                }
+            }
+        }
+
+        Assert.True(checkedSeasons > 50, $"amostra pequena demais ({checkedSeasons} temporadas)");
+    }
 }

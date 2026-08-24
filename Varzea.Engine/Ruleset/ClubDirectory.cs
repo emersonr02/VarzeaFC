@@ -68,9 +68,20 @@ public sealed class ClubDirectory
 
     /// <summary>Sorteia um clube real pro tier dado. Mesmo clube pode repetir entre
     /// temporadas (real: um jogador pode voltar a jogar num clube em que já jogou).</summary>
-    public string PickClub(string country, int tier, Pcg32 rng)
+    /// <param name="exclude">Clube a NÃO sortear — usado pra proposta de transferência
+    /// nunca vir do clube onde o jogador já está ("proposta do seu próprio clube" não
+    /// existe, e ainda deixava o jogador driblar um rebaixamento sem sair do lugar:
+    /// aceitar a proposta cancelava a queda de divisão e o clube era o mesmo). Todos os
+    /// clubes de um mesmo pool têm a MESMA força de base (ver BaseStrength), então
+    /// excluir um não altera a simulação da tabela.</param>
+    public string PickClub(string country, int tier, Pcg32 rng, string? exclude = null)
     {
         var pool = PoolFor(country, tier);
+        if (exclude is not null)
+        {
+            var filtered = pool.Where(c => c != exclude).ToList();
+            if (filtered.Count > 0) pool = filtered;
+        }
         return pool[rng.NextInt(0, pool.Count - 1)];
     }
 

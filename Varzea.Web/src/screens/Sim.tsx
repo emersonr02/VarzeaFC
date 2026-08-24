@@ -300,6 +300,14 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
   const canFinish = finished && queue.length === 0 && pendingPause === null
     && pendingMatches.length === 0 && pendingSeasonClip === null;
 
+  // Tabela "simultânea": enquanto as partidas de uma temporada estão sendo reveladas,
+  // a tabela da esquerda mostra a classificação DAQUELA rodada, não a final — senão o
+  // jogador veria como o campeonato termina antes de jogar.
+  const liveSeason = pendingSeasonClip?.season ?? lastSeason;
+  const liveRound = pendingSeasonClip
+    ? Math.max(0, pendingSeasonClip.season.matches.length - pendingMatches.length - 1)
+    : null;
+
   return (
     <section className="screen pitch-bg">
       <div className="wrap wrap-wide">
@@ -316,8 +324,8 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
             coluna só no celular (ver .sim-grid no theme.css). */}
         <div className="sim-grid">
           <div className="sim-col">
-            {lastSeason
-              ? <LeagueTablePanel season={lastSeason} />
+            {liveSeason
+              ? <LeagueTablePanel season={liveSeason} round={liveRound} />
               : <div className="panel"><div className="panel-title">Tabela</div><p className="empty-msg" style={{ padding: "12px 4px", fontSize: 13 }}>A tabela aparece depois da primeira temporada.</p></div>}
           </div>
 
@@ -525,6 +533,11 @@ function seasonNewsFlash(season: SeasonResult): { icon: string; color: string; h
   const bestTitle = TITLE_PRIORITY.find((t) => season.titles.includes(t));
   if (bestTitle) return { icon: "🏆", color: "var(--gold)", headline: `${TITLE_LABEL[bestTitle].toUpperCase()}!` };
   if (season.promoted) return { icon: "⬆️", color: "#27ae60", headline: "ACESSO! O CLUBE SUBIU DE DIVISÃO" };
+  // Quando o clube cai MAS o jogador já acertou saída, a manchete precisa dizer isso —
+  // senão lê-se "você foi rebaixado" e a temporada seguinte na 1ª divisão (em outro
+  // clube) parece bug.
+  if (season.relegated && season.acceptedTransfer)
+    return { icon: "🛫", color: "#e08a2d", headline: "O CLUBE CAIU — MAS VOCÊ JÁ ACERTOU SAÍDA" };
   if (season.relegated) return { icon: "⬇️", color: "#c0392b", headline: "REBAIXAMENTO" };
   return { icon: "📋", color: "var(--blue)", headline: "TEMPORADA ENCERRADA" };
 }
@@ -710,14 +723,28 @@ function ClubStatusCard({ season, country, showTable = true }: { season: SeasonR
   );
 }
 
-// Tabela numa coluna própria (layout de 3 colunas) — mesma LeagueTableView, só com o
-// cabeçalho e o quadro em volta.
-function LeagueTablePanel({ season }: { season: SeasonResult }) {
-  const rows = leagueTableRowsToShow(season);
+// Tabela numa coluna própria (layout de 3 colunas). No modo jogo a jogo ela é
+// "simultânea": mostra a classificação da RODADA atual (roundStandings), não a final —
+// senão o jogador veria o resultado do campeonato antes de jogar as partidas.
+function LeagueTablePanel({ season, round }: { season: SeasonResult; round: number | null }) {
+  const live = round !== null && season.roundStandings.length > 0;
+  const source = live
+    ? season.roundStandings[Math.min(round, season.roundStandings.length - 1)]
+    : season.leagueTable;
+  const rows = source.map((r, i) => ({ rank: i + 1, ...r }));
   if (rows.length === 0) return null;
+  const totalRounds = season.roundStandings.length || season.matches.length;
+
   return (
     <div className="panel">
-      <div className="panel-title">{leagueNameFor(season.clubTier, season.clubCountry)}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <div className="panel-title" style={{ marginBottom: 4 }}>{leagueNameFor(season.clubTier, season.clubCountry)}</div>
+        {live && (
+          <span className="live-tag">
+            <span className="live-dot" /> Rodada {Math.min(round + 1, totalRounds)}/{totalRounds}
+          </span>
+        )}
+      </div>
       <div style={{ fontSize: 11 }}>
         <LeagueTableView rows={rows} dark tall />
       </div>
