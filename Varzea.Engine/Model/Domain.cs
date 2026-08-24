@@ -224,6 +224,13 @@ public sealed class SeasonResult
     public bool Promoted { get; init; }
     public bool Relegated { get; init; }
 
+    /// <summary>Vagas de acesso/rebaixamento da liga desta temporada (regulamento do
+    /// país — ver CountryDef). Vão pro front pra desenhar as zonas da tabela com o
+    /// número certo: antes o front tinha 2/4 fixos pra todo país, o que desenhava a
+    /// zona errada em toda liga que não fosse essa.</summary>
+    public int PromotionSpots { get; init; }
+    public int RelegationSpots { get; init; }
+
     // --- Fadiga (painel Saúde, roadmap pós-§9) ---
     /// <summary>Fadiga acumulada ao FIM desta temporada (0..~1.2) — sistema sempre
     /// ativo, não depende de nenhum SeasonRequest ter sido feito.</summary>

@@ -509,12 +509,11 @@ function requestNote(season: SeasonResult): string | null {
 }
 
 // Tabela real (Roadmap pós-§9, painel Clube) — completa, não só top 5 + linha do
-// jogador (pedido explícito: "mostra a tabela completa"). PROMOTION_SPOTS/
-// RELEGATION_SPOTS espelham as constantes do motor (CareerSimulator.PromotionSpots/
-// RelegationSpots) só pra desenhar as zonas de acesso/rebaixamento — cosmético, o
-// motor já decidiu de verdade quem sobe/desce.
-const PROMOTION_SPOTS = 2;
-const RELEGATION_SPOTS = 4;
+// jogador (pedido explícito: "mostra a tabela completa"). As vagas de acesso/
+// rebaixamento vêm do SeasonResult (regulamento do país — Brasil troca 4, a maioria da
+// Europa troca 3); os valores abaixo são só reserva pra quando ainda não há temporada.
+const DEFAULT_PROMOTION_SPOTS = 3;
+const DEFAULT_RELEGATION_SPOTS = 3;
 
 function leagueTableRowsToShow(season: SeasonResult): { rank: number; clubName: string; points: number; isPlayerClub: boolean }[] {
   return season.leagueTable.map((r, i) => ({ rank: i + 1, ...r }));
@@ -555,7 +554,7 @@ function SeasonNewsFlash({ season }: { season: SeasonResult }) {
       }}>{icon}</div>
       <div>
         <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", opacity: 0.65, fontWeight: 700 }}>
-          Última hora · {season.age} anos
+          Plantão da várzea · {season.age} anos
         </div>
         <div style={{ fontFamily: "var(--font-d)", fontSize: 15, fontWeight: 700, lineHeight: 1.1 }}>{headline}</div>
       </div>
@@ -626,15 +625,21 @@ function leagueNameFor(clubTier: number, country: string): string {
 // resumo de temporada dentro do ticker (.clip é um cartão claro). Bug real corrigido:
 // o texto padrão herdava --ink (quase preto, pensado pra cartão claro) e ficava
 // ilegível sobre o fundo escuro do .dash-bar ("horrível, sem contraste nenhum").
-function LeagueTableView({ rows, dark = false, tall = false }: { rows: ReturnType<typeof leagueTableRowsToShow>; dark?: boolean; tall?: boolean }) {
+function LeagueTableView({ rows, dark = false, tall = false, promotionSpots, relegationSpots }: {
+  rows: ReturnType<typeof leagueTableRowsToShow>;
+  dark?: boolean;
+  tall?: boolean;
+  promotionSpots: number;
+  relegationSpots: number;
+}) {
   if (rows.length === 0) return null;
-  const relegationCut = rows.length - RELEGATION_SPOTS;
+  const relegationCut = rows.length - relegationSpots;
   const rowColor = dark ? "rgba(255,255,255,0.92)" : undefined;
   const ownColor = dark ? "var(--gold)" : "var(--blue)";
   return (
     <div style={{ maxHeight: tall ? 620 : 220, overflowY: "auto" }}>
       {rows.map((r) => {
-        const inPromotionZone = r.rank <= PROMOTION_SPOTS;
+        const inPromotionZone = r.rank <= promotionSpots;
         const inRelegationZone = r.rank > relegationCut;
         return (
           <div key={r.clubName}>
@@ -675,8 +680,9 @@ function ClubStatusCard({ season, country, showTable = true }: { season: SeasonR
   const leagueName = leagueNameFor(season.clubTier, season.clubCountry);
   const tableRows = leagueTableRowsToShow(season);
   const champion = season.leaguePosition === 1;
-  const inPromotionZone = !champion && season.leaguePosition <= PROMOTION_SPOTS;
-  const inRelegationZone = tableRows.length > 0 && season.leaguePosition > tableRows.length - RELEGATION_SPOTS;
+  const inPromotionZone = !champion && season.leaguePosition <= (season.promotionSpots || DEFAULT_PROMOTION_SPOTS);
+  const inRelegationZone = tableRows.length > 0
+    && season.leaguePosition > tableRows.length - (season.relegationSpots || DEFAULT_RELEGATION_SPOTS);
   const statusBadge = champion
     ? { text: "🏆 Campeão", color: "var(--gold)" }
     : inPromotionZone
@@ -716,7 +722,7 @@ function ClubStatusCard({ season, country, showTable = true }: { season: SeasonR
       {showTable && tableRows.length > 0 && (
         <div style={{ marginTop: 10, fontSize: 11 }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--paper2)" }}>Tabela completa · {leagueName}</div>
-          <LeagueTableView rows={tableRows} dark />
+          <LeagueTableView rows={tableRows} dark promotionSpots={season.promotionSpots || DEFAULT_PROMOTION_SPOTS} relegationSpots={season.relegationSpots || DEFAULT_RELEGATION_SPOTS} />
         </div>
       )}
     </div>
@@ -746,7 +752,7 @@ function LeagueTablePanel({ season, round }: { season: SeasonResult; round: numb
         )}
       </div>
       <div style={{ fontSize: 11 }}>
-        <LeagueTableView rows={rows} dark tall />
+        <LeagueTableView rows={rows} dark tall promotionSpots={season.promotionSpots || DEFAULT_PROMOTION_SPOTS} relegationSpots={season.relegationSpots || DEFAULT_RELEGATION_SPOTS} />
       </div>
     </div>
   );
@@ -886,7 +892,7 @@ function SeasonClip({ season, country }: { season: SeasonResult; country: string
       {tableRows.length > 0 && (
         <div className="body" style={{ marginTop: 6, fontSize: 11 }}>
           <div style={{ fontWeight: 700, marginBottom: 2 }}>Tabela completa · {leagueName}</div>
-          <LeagueTableView rows={tableRows} />
+          <LeagueTableView rows={tableRows} promotionSpots={season.promotionSpots || DEFAULT_PROMOTION_SPOTS} relegationSpots={season.relegationSpots || DEFAULT_RELEGATION_SPOTS} />
         </div>
       )}
       {note && <div className="body" style={{ marginTop: 4, fontStyle: "italic" }}>{note}</div>}

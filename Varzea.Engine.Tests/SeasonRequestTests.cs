@@ -221,11 +221,14 @@ public class SeasonRequestTests
     [Fact]
     public void SetPieces_OnceGranted_AppliesToLaterSeasons()
     {
+        // Mesma razão do teste da braçadeira: concessão probabilística, seed varrida.
         var sim = new CareerSimulator(Rules, Clubs);
-        var recipe = BaseRecipe(1) with { SeasonRequests = AlwaysSetPieces };
+        var result = FindCareer(sim, AlwaysSetPieces, c => c.Timeline.Any(s => s.HasSetPieces),
+            "pedindo bolas paradas toda temporada, deveria ser concedido em alguma carreira");
 
-        var result = sim.SimulateCareer(recipe);
-        Assert.Contains(result.Timeline, s => s.HasSetPieces);
+        int firstIdx = result.Timeline.FindIndex(s => s.HasSetPieces);
+        Assert.All(result.Timeline.Skip(firstIdx), s => Assert.True(s.HasSetPieces,
+            "bolas paradas é concessão permanente — não pode voltar atrás"));
     }
 
     /// <summary>
@@ -318,13 +321,29 @@ public class SeasonRequestTests
     [Fact]
     public void Captaincy_OnceGranted_StaysGrantedForRestOfCareer()
     {
+        // Varre seeds em vez de fixar uma: a concessão é probabilística, então prender o
+        // teste a uma seed específica o quebra a cada mudança no consumo de RNG (já
+        // aconteceu). O que importa aqui é a MECÂNICA — uma vez concedida, fica.
         var sim = new CareerSimulator(Rules, Clubs);
-        var recipe = BaseRecipe(1) with { SeasonRequests = AlwaysCaptaincy };
+        var result = FindCareer(sim, AlwaysCaptaincy, c => c.Timeline.Any(s => s.IsCaptain),
+            "pedindo braçadeira toda temporada, deveria ser concedida em alguma carreira");
 
-        var result = sim.SimulateCareer(recipe);
         int firstCaptainIdx = result.Timeline.FindIndex(s => s.IsCaptain);
-        Assert.True(firstCaptainIdx >= 0, "pedindo braçadeira toda temporada, deveria ser concedida em algum momento nesta carreira");
         Assert.All(result.Timeline.Skip(firstCaptainIdx), s => Assert.True(s.IsCaptain));
+    }
+
+    /// <summary>Roda a mesma receita em várias seeds até achar uma carreira que exiba o
+    /// comportamento procurado. Deixa os testes de mecânica imunes a mudanças no consumo
+    /// de RNG, sem afrouxar o que está sendo verificado.</summary>
+    private static CareerResult FindCareer(
+        CareerSimulator sim, SeasonRequestKind[] requests, Func<CareerResult, bool> predicate, string because)
+    {
+        for (ulong seed = 1; seed <= 60; seed++)
+        {
+            var candidate = sim.SimulateCareer(BaseRecipe(seed) with { SeasonRequests = requests });
+            if (predicate(candidate)) return candidate;
+        }
+        throw new Xunit.Sdk.XunitException(because);
     }
 
     // --- Fadiga (painel Saúde, roadmap pós-§9) — único sistema desta rodada SEMPRE
@@ -436,10 +455,14 @@ public class SeasonRequestTests
     [Fact]
     public void RequestPromiseTitle_FulfilledOnlyWhenLeagueIsWon_AndMovesMoralInBothDirections()
     {
+        // Precisa de uma carreira que tenha os DOIS desfechos (promessa cumprida e
+        // quebrada) pra provar que a moral reage nas duas direções — varre seeds em vez
+        // de fixar uma, que quebra a cada mudança no consumo de RNG.
         var sim = new CareerSimulator(Rules, Clubs);
-        var recipe = BaseRecipe(7) with { SeasonRequests = AlwaysPromiseTitle };
-
-        var result = sim.SimulateCareer(recipe);
+        var result = FindCareer(sim, AlwaysPromiseTitle,
+            c => c.Timeline.Any(s => s.PromisedTitle && s.PromiseFulfilled)
+              && c.Timeline.Any(s => s.PromisedTitle && !s.PromiseFulfilled),
+            "deveria existir carreira com promessa cumprida E quebrada");
 
         var promised = result.Timeline.Where(s => s.PromisedTitle).ToList();
         Assert.NotEmpty(promised);
@@ -454,8 +477,8 @@ public class SeasonRequestTests
         // reage nas DUAS direções (cumprida sobe, quebrada desce), não só uma.
         var fulfilledIdx = result.Timeline.FindIndex(s => s.PromisedTitle && s.PromiseFulfilled);
         var brokenIdx = result.Timeline.FindIndex(s => s.PromisedTitle && !s.PromiseFulfilled);
-        Assert.True(fulfilledIdx >= 0, "nesta seed, pedindo toda temporada, deveria ser campeão pelo menos uma vez");
-        Assert.True(brokenIdx >= 0, "nesta seed, pedindo toda temporada, deveria falhar pelo menos uma vez também");
+        Assert.True(fulfilledIdx >= 0, "a carreira escolhida deveria ter pelo menos uma promessa cumprida");
+        Assert.True(brokenIdx >= 0, "a carreira escolhida deveria ter pelo menos uma promessa quebrada");
 
         double moraleBeforeFulfilled = fulfilledIdx > 0
             ? (result.Timeline[fulfilledIdx - 1].TeamMorale + result.Timeline[fulfilledIdx - 1].CrowdMorale) / 2.0

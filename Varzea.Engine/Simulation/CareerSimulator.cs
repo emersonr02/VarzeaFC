@@ -98,11 +98,10 @@ public sealed class CareerSimulator
     /// menor — é um efeito de UMA temporada, não acumulado.</summary>
     private const double InjuryRecoveryPerfPenalty = 6.0;
 
-    /// <summary>Acesso/rebaixamento (roadmap pós-§9): quantas vagas de subida/descida em
-    /// cada ponta da tabela — arbitrário, só precisa ficar plausível pro tamanho normal
-    /// de divisão em clubs.json (~18-20 clubes).</summary>
-    private const int PromotionSpots = 2;
-    private const int RelegationSpots = 4;
+    // As vagas de acesso/rebaixamento agora vêm do REGULAMENTO DE CADA PAÍS
+    // (CountryDef.PromotionSpots/RelegationSpots, em balance.json) — as constantes
+    // globais que ficavam aqui (2 sobem / 4 descem pra todo mundo) não batiam com liga
+    // nenhuma de verdade.
 
     private static List<Legend> DrawCandidates(Pcg32 rng, List<Legend> pool)
     {
@@ -235,6 +234,8 @@ public sealed class CareerSimulator
         // uma proposta internacional aceita (ver bloco de aceite de proposta abaixo).
         string clubCountry = recipe.Country;
         var clubCountryRules = country;
+        // Mundo vivo: quem está em cada divisão muda ao longo da carreira.
+        var universe = new LeagueUniverse(_clubs);
         // Índice de PendingContractChoice (Roadmap §9 Bloco 3, corte de escopo fechado —
         // "1+ propostas"; desde "propostas de mais clubes" no roadmap pós-§9, é o ÚNICO
         // índice de proposta que existe, dentro ou fora do ciclo de contrato) — indexando
@@ -574,7 +575,10 @@ public sealed class CareerSimulator
             // clubes da MESMA divisão do jogador jogam pontos corridos entre si; a
             // força do próprio jogador nessa tabela é a força de base do clube +
             // perf (bom o bastante pra puxar o time, ruim o bastante pra afundar).
-            var rivals = _clubs.LeagueRivals(clubCountry, tier, clubName);
+            // Divisão VIVA (ver LeagueUniverse): reflete quem subiu e desceu nas
+            // temporadas anteriores, não a lista fixa de clubs.json.
+            universe.EnsureMember(clubCountry, tier >= 3, clubName);
+            var rivals = universe.Division(clubCountry, tier >= 3).Where(c => c != clubName).ToList();
             double ownStrength = _clubs.BaseStrength(clubCountry, clubName) + perf;
             var (leaguePosition, leagueTable, fixtures, roundStandings) =
                 SimulateLeagueTable(clubName, ownStrength, rivals, clubCountry, rng, captureRoundStandings: includeMatches);
@@ -596,22 +600,35 @@ public sealed class CareerSimulator
             // divisão 2 (tier 2) — aplica no TOPO da temporada SEGUINTE (mesmo padrão de
             // parentTier), nunca no meio desta. leagueTable.Count é o total de clubes na
             // tabela (rivais + o próprio).
+            // Vagas de acesso/rebaixamento são do REGULAMENTO DE CADA PAÍS (ver
+            // CountryDef.PromotionSpots/RelegationSpots): Brasil troca 4, a maioria da
+            // Europa troca 3. Antes era 2 sobem / 4 descem pra todo mundo, o que não
+            // batia com liga nenhuma.
+            int promotionSpots = clubCountryRules.PromotionSpots;
+            int relegationSpots = clubCountryRules.RelegationSpots;
             bool promoted = false, relegated = false;
-            if (tier is 1 or 2 && leaguePosition <= PromotionSpots)
+            if (tier is 1 or 2 && leaguePosition <= promotionSpots)
             {
                 pendingAutoTier = 3;
                 promoted = true;
             }
-            else if (tier is 3 or 4 && leaguePosition > leagueTable.Count - RelegationSpots)
+            else if (tier is 3 or 4 && leaguePosition > leagueTable.Count - relegationSpots)
             {
                 pendingAutoTier = 2;
                 relegated = true;
             }
 
+            // O MUNDO se move junto: os outros clubes também sobem e descem. Sem isto as
+            // divisões eram listas fixas e "o time que subiu comigo" simplesmente não
+            // aparecia na divisão nova no ano seguinte (bug real relatado).
+            ApplyPromotionRelegation(universe, clubCountry, tier >= 3, leagueTable,
+                promotionSpots, relegationSpots, recipe.Seed, age);
+
             var season = new SeasonResult
             {
                 Age = age, Overall = overall, ClubTier = tier, ClubName = clubName, ClubCountry = clubCountry, Apps = apps,
                 Promoted = promoted, Relegated = relegated,
+                PromotionSpots = promotionSpots, RelegationSpots = relegationSpots,
                 Matches = matches, SeasonRating = seasonRating,
                 RoundStandings = roundStandings,
                 MarketValue = MarketValueOf(overall, age, tier),
@@ -1030,7 +1047,8 @@ public sealed class CareerSimulator
                 PromisedTitle = promisedTitle, PromiseFulfilled = promiseFulfilled,
                 RequestMade = request, RequestGranted = requestGranted,
                 RecoveringFromInjury = season.RecoveringFromInjury,
-                Promoted = season.Promoted, Relegated = season.Relegated
+                Promoted = season.Promoted, Relegated = season.Relegated,
+                PromotionSpots = season.PromotionSpots, RelegationSpots = season.RelegationSpots
             };
             finished.Titles.AddRange(season.Titles);
             result.Timeline.Add(finished);
@@ -1109,21 +1127,32 @@ public sealed class CareerSimulator
         var proposals = new List<ContractProposalOption>();
 
         bool qualifiesUpgrade = forceDirection ?? (overall >= target);
-        int primaryTier = Math.Clamp(tier + (qualifiesUpgrade ? 1 : -1), 1, 5);
+
+        // TETO DE MERCADO PELO OVERALL — quem decide o tamanho do clube interessado é o
+        // nível do jogador, não a divisão onde ele está hoje. Antes a proposta era
+        // sempre tier±1, então um camisa 9 de overall 86 preso na 2ª divisão só recebia
+        // sondagem do vizinho de tabela (bug real relatado: "tava com over 86 na Série B
+        // e só veio Mirassol e Coritiba"). Agora ele salta direto pro nível que merece.
+        int ceilingByOverall = overall >= 84 ? 5 : overall >= 78 ? 4 : overall >= 70 ? 3 : 2;
+        int primaryTier = qualifiesUpgrade
+            ? Math.Clamp(Math.Max(tier + 1, ceilingByOverall), 1, 5)
+            : Math.Clamp(tier - 1, 1, 5);
 
         // Só a proposta PRIMÁRIA pode ser internacional — lateral/esticada continuam
         // domésticas, mantendo a maior parte da mecânica já testada intocada. Não exige
         // qualifiesUpgrade (bug encontrado nesta sessão: o target do tier 5 é 92 — como
         // "subir" além do tier 5 não existe, qualifiesUpgrade ficava sempre falso lá em
         // cima e a transferência internacional nunca disparava de verdade). Ir pra fora
-        // é sempre um "upgrade" de prestígio por construção, não uma repetição do
-        // cálculo doméstico de tier+1/tier-1.
+        // é sempre um "upgrade" de prestígio por construção.
+        // Também não exige mais estar NO tier 5: quem manda é o overall — clube europeu
+        // garimpa jogador bom na 2ª divisão de outro país, é o caminho mais comum de
+        // carreira que existe.
         string primaryCountry = country;
         bool international = false;
-        if (tier == 5 && overall >= InternationalOverallThreshold && rng.Chance(InternationalProposalChance))
+        if (overall >= InternationalOverallThreshold && primaryTier >= 4 && rng.Chance(InternationalProposalChance))
         {
             var foreign = _clubs.PickForeignCountry(country, rng);
-            if (foreign is not null) { primaryCountry = foreign; primaryTier = 5; international = true; }
+            if (foreign is not null) { primaryCountry = foreign; primaryTier = Math.Max(primaryTier, 4); international = true; }
         }
 
         // Clube sorteado AQUI, na geração — o mesmo nome mostrado na proposta é o que
@@ -1140,13 +1169,26 @@ public sealed class CareerSimulator
         if (rng.Chance(lateralChance) && primaryTier != tier)
             proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng, currentClub), country));
 
-        // Terceira proposta: "esticada" — só pra quem está muito bem, um clube ainda
-        // maior que o da proposta principal.
-        if (overall >= 85 && tier < 5)
+        // CONCORRÊNCIA PELO JOGADOR — quanto melhor ele é, mais clubes entram na
+        // disputa. Antes o teto era 3 propostas e, na prática, quase sempre 1 ou 2:
+        // craque nenhum tem uma proposta só. Agora vai até 5 pra quem é elite.
+        int extraSuitors = overall >= 86 ? 3 : overall >= 80 ? 2 : overall >= 74 ? 1 : 0;
+        for (int i = 0; i < extraSuitors; i++)
         {
-            int stretchTier = Math.Clamp(tier + 1, 1, 5);
-            if (!proposals.Any(p => p.ClubTier == stretchTier))
-                proposals.Add(new ContractProposalOption(stretchTier, true, _clubs.PickClub(country, stretchTier, rng, currentClub), country));
+            // Pretendentes variam entre o nível da proposta principal e um degrau
+            // abaixo — clubes diferentes disputando o mesmo jogador.
+            int suitorTier = Math.Clamp(primaryTier - (i % 2), 1, 5);
+            string suitorCountry = country;
+            // Parte do assédio de um jogador de elite vem de fora.
+            if (overall >= InternationalOverallThreshold && rng.Chance(0.35))
+            {
+                var foreign = _clubs.PickForeignCountry(country, rng);
+                if (foreign is not null) suitorCountry = foreign;
+            }
+            string suitorClub = _clubs.PickClub(suitorCountry, suitorTier, rng, currentClub);
+            // Nunca dois cartões do mesmo clube na mesma janela.
+            if (proposals.Any(p => p.ClubName == suitorClub)) continue;
+            proposals.Add(new ContractProposalOption(suitorTier, suitorTier > tier, suitorClub, suitorCountry));
         }
 
         return proposals;
@@ -1176,6 +1218,98 @@ public sealed class CareerSimulator
     /// (modo "jogo a jogo"). Outcome: 1=vitória, 0=empate, -1=derrota, do ponto de vista
     /// do clube do jogador.</summary>
     private readonly record struct PlayerFixture(string Opponent, bool Home, int Outcome);
+
+    /// <summary>
+    /// Quem está em cada divisão AGORA, por país — muda ao longo da carreira conforme
+    /// clubes sobem e descem. Antes as divisões eram as listas fixas de clubs.json e
+    /// nenhum clube jamais trocava de divisão: o time que subiu junto com o jogador
+    /// sumia do mapa no ano seguinte (bug real relatado). Vive por carreira, criado sob
+    /// demanda pro país onde o jogador está (transferência internacional cria o do país
+    /// novo na hora).
+    /// </summary>
+    private sealed class LeagueUniverse
+    {
+        private readonly ClubDirectory _clubs;
+        private readonly Dictionary<string, (List<string> Div1, List<string> Div2)> _byCountry = new();
+
+        public LeagueUniverse(ClubDirectory clubs) => _clubs = clubs;
+
+        private (List<string> Div1, List<string> Div2) For(string country)
+        {
+            if (!_byCountry.TryGetValue(country, out var u))
+            {
+                var cc = _clubs.Countries.TryGetValue(country, out var c) ? c : _clubs.Countries.Values.First();
+                u = (new List<string>(cc.Divisao1), new List<string>(cc.Divisao2));
+                _byCountry[country] = u;
+            }
+            return u;
+        }
+
+        public List<string> Division(string country, bool firstDivision)
+        {
+            var (d1, d2) = For(country);
+            return firstDivision ? d1 : d2;
+        }
+
+        /// <summary>Garante que o clube do jogador esteja na divisão em que ele joga —
+        /// pode não estar depois de uma transferência que cruza divisões. Troca de lugar
+        /// com um clube da outra divisão pra manter os DOIS tamanhos estáveis (nada
+        /// "some" do mundo).</summary>
+        public void EnsureMember(string country, bool firstDivision, string club)
+        {
+            var (d1, d2) = For(country);
+            var here = firstDivision ? d1 : d2;
+            var there = firstDivision ? d2 : d1;
+            if (here.Contains(club)) return;
+
+            there.Remove(club);
+            if (here.Count > 0)
+            {
+                // O último daqui cede o lugar e vai pra outra divisão.
+                var displaced = here[^1];
+                here[^1] = club;
+                if (!there.Contains(displaced)) there.Add(displaced);
+            }
+            else here.Add(club);
+        }
+
+        public void Swap(string country, IReadOnlyList<string> goingUp, IReadOnlyList<string> goingDown)
+        {
+            var (d1, d2) = For(country);
+            foreach (var c in goingUp) { if (d2.Remove(c) && !d1.Contains(c)) d1.Add(c); }
+            foreach (var c in goingDown) { if (d1.Remove(c) && !d2.Contains(c)) d2.Add(c); }
+        }
+    }
+
+    /// <summary>
+    /// Move clubes entre as divisões no fim da temporada. A divisão do JOGADOR usa a
+    /// tabela real que acabou de ser simulada; a outra divisão (que o jogador não
+    /// disputou) é ordenada por força + ruído, com RNG DERIVADO — não consome sorteio
+    /// nenhum do fluxo da carreira, então não mexe na calibração.
+    /// </summary>
+    private void ApplyPromotionRelegation(
+        LeagueUniverse universe, string country, bool playerInFirstDivision,
+        IReadOnlyList<LeagueTableRow> playerTable, int promotionSpots, int relegationSpots,
+        ulong seed, int age)
+    {
+        var otherRng = Pcg32.Derive(seed, $"otherdiv:{country}:{age}");
+        var other = universe.Division(country, !playerInFirstDivision)
+            .OrderByDescending(c => _clubs.BaseStrength(country, c) + otherRng.NextDouble() * 24 - 12)
+            .ToList();
+
+        List<string> up, down;
+        if (playerInFirstDivision)
+        {
+            down = playerTable.TakeLast(Math.Min(relegationSpots, playerTable.Count)).Select(r => r.ClubName).ToList();
+            up = other.Take(Math.Min(promotionSpots, other.Count)).ToList();
+        }
+        else
+        {
+            up = playerTable.Take(Math.Min(promotionSpots, playerTable.Count)).Select(r => r.ClubName).ToList();
+            down = other.TakeLast(Math.Min(relegationSpots, other.Count)).ToList();
+        }
+        universe.Swap(country, up, down);
+    }
 
     private (int Position, List<LeagueTableRow> Table, List<PlayerFixture> Fixtures,
              List<IReadOnlyList<LeagueTableRow>> RoundStandings) SimulateLeagueTable(

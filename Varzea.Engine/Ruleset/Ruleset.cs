@@ -87,6 +87,16 @@ public sealed class CountryDef
     /// campeão uruguaio, mesmo quando as duas ligas caem no mesmo LeagueGrade.
     /// </summary>
     public double LeaguePrestige { get; set; } = 1.0;
+
+    /// <summary>
+    /// Quantos clubes SOBEM da 2ª divisão e quantos DESCEM da 1ª, por país — o
+    /// regulamento real de cada liga, não um número único pra todo mundo (antes era
+    /// 2 sobem / 4 descem em qualquer país, o que não bate com liga nenhuma). Onde o
+    /// regulamento usa playoff pra última vaga, a vaga do playoff está contada aqui:
+    /// o motor não simula o playoff em si, só o número efetivo de trocas.
+    /// </summary>
+    public int PromotionSpots { get; set; } = 3;
+    public int RelegationSpots { get; set; } = 3;
     public List<string> Places { get; set; } = new();
 }
 

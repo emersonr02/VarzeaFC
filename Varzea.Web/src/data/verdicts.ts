@@ -17,18 +17,25 @@ export interface Verdict {
   needsBallonOr?: boolean;
 }
 
+/**
+ * Escada de veredictos na voz da casa (várzea brasileira). Os nomes foram reescritos
+ * de propósito: a versão anterior terminava em "O FENÔMENO" e usava "Top 10 / Top 5 da
+ * História", que é a linguagem de marca de um simulador concorrente — nome de produto
+ * alheio não pode virar o tier máximo do nosso jogo. Os LIMIARES não mudaram: a
+ * calibração do placar segue exatamente a mesma.
+ */
 export const VERDICTS: Verdict[] = [
-  { min: -Infinity, tier: 1, title: "Jogador Regular", desc: "Ganhou a vida com a bola no pé, sem holofote — mas rodou bola em time grande de verdade." },
-  { min: 25, tier: 2, title: "Sensação de Uma Temporada", desc: "Teve seu momento de brilho. A torcida lembra até hoje daquele ano." },
-  { min: 50, tier: 3, title: "Estrela em Ascensão", desc: "Consistente, querido pela torcida, sempre disputado no mercado." },
-  { min: 70, tier: 4, title: "Nome de Peso", desc: "Peça-chave em qualquer elenco. Manchete garantida em temporada boa." },
-  { min: 105, tier: 5, title: "Top 50 da História", desc: "Entrou pra galeria. Nome que aparece em qualquer discussão séria sobre a posição." },
-  { min: 155, tier: 6, title: "Referência da Posição", desc: "Quando alguém pensa na sua posição, pensa em você primeiro." },
-  { min: 210, tier: 7, title: "Top 10 da História", desc: "Carreira de arrepiar. Poucos fizeram o que você fez." },
-  { min: 280, tier: 8, title: "O Maior da Posição", desc: "Ninguém discute. Você é a régua que os outros tentam alcançar." },
-  { min: 335, tier: 9, title: "Top 5 da História", desc: "A Bola de Ouro na estante prova: você não foi só bom, foi o melhor do mundo.", needsBallonOr: true },
-  { min: 405, tier: 10, title: "Sempre no Papo de Maior de Todos", desc: "Estátua, documentário, aquele arrepio ao ouvir seu nome. Você virou história.", needsBallonOr: true },
-  { min: 475, tier: 11, title: "O FENÔMENO", desc: "O nível mais raro. Não existe estatística que resuma — só existe assistir e acreditar.", needsBallonOr: true },
+  { min: -Infinity, tier: 1, title: "Rodou Bola por Aí", desc: "Ganhou a vida com a bola no pé, sem holofote — mas pisou em gramado de time grande de verdade." },
+  { min: 25, tier: 2, title: "Xodó da Arquibancada", desc: "Teve seu momento de brilho. A torcida lembra até hoje daquele ano." },
+  { min: 50, tier: 3, title: "Camisa Marcada", desc: "Consistente, querido pela torcida, sempre disputado no mercado." },
+  { min: 70, tier: 4, title: "Nome que Enche Estádio", desc: "Peça-chave em qualquer elenco. Manchete garantida em temporada boa." },
+  { min: 105, tier: 5, title: "Ídolo de uma Geração", desc: "Entrou pra galeria. Nome que aparece em qualquer discussão séria sobre a posição." },
+  { min: 155, tier: 6, title: "Dono da Posição", desc: "Quando alguém pensa na sua posição, pensa em você primeiro." },
+  { min: 210, tier: 7, title: "Monstro Sagrado", desc: "Carreira de arrepiar. Pouquíssimos fizeram o que você fez." },
+  { min: 280, tier: 8, title: "Fora de Série", desc: "Ninguém discute. Você é a régua que os outros tentam alcançar." },
+  { min: 335, tier: 9, title: "Imortal do Futebol", desc: "A Bola de Ouro na estante prova: você não foi só bom, foi o melhor do mundo.", needsBallonOr: true },
+  { min: 405, tier: 10, title: "Escrito na História", desc: "Estátua, documentário, aquele arrepio ao ouvir seu nome. Você virou história.", needsBallonOr: true },
+  { min: 475, tier: 11, title: "O ETERNO", desc: "O nível mais raro que existe. Não tem estatística que resuma — só dá pra assistir e acreditar.", needsBallonOr: true },
 ];
 
 export function computeVerdict(score: number, titleCounts: Partial<Record<TitleKind, number>>): Verdict {

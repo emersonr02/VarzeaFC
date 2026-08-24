@@ -119,16 +119,16 @@
   },
 
   "countries": {
-    "Brasil":     { "strength": 8, "leagueGrade": 2, "southAmerican": true,  "leaguePrestige": 0.65, "places": ["Vila Nova", "Serra Alta", "Rio Manso", "Litoral Sul"] },
-    "Argentina":  { "strength": 7, "leagueGrade": 2, "southAmerican": true,  "leaguePrestige": 0.65, "places": ["Puerto Bravo", "Las Pampas", "Villa del Sol"] },
-    "Uruguai":    { "strength": 5, "leagueGrade": 1, "southAmerican": true,  "leaguePrestige": 0.35, "places": ["Costa Dorada", "Punta Alta", "Bahía Norte"] },
-    "Espanha":    { "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.90, "places": ["Costa Brava", "Sierra Alta", "Vega Dorada"] },
-    "Inglaterra": { "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 1.00, "places": ["Riverside", "Northgate", "Kingswood"] },
-    "Itália":     { "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.90, "places": ["Monte Rosso", "Porto Chiaro", "Lago Blu"] },
-    "Alemanha":   { "strength": 7, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.80, "places": ["Rheinfeld", "Bergtal", "Waldstadt"] },
-    "França":     { "strength": 7, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.80, "places": ["Val d'Or", "Mont Clair", "Beau Rivage"] },
-    "Portugal":   { "strength": 5, "leagueGrade": 2, "southAmerican": false, "leaguePrestige": 0.50, "places": ["Vale do Tejo", "Costa Norte", "Vila Real"] },
-    "Holanda":    { "strength": 5, "leagueGrade": 2, "southAmerican": false, "leaguePrestige": 0.50, "places": ["Zeewijk", "Duinpark", "Meerstad"] }
+    "Brasil":     { "promotionSpots": 4, "relegationSpots": 4, "strength": 8, "leagueGrade": 2, "southAmerican": true,  "leaguePrestige": 0.65, "places": ["Vila Nova", "Serra Alta", "Rio Manso", "Litoral Sul"] },
+    "Argentina":  { "promotionSpots": 4, "relegationSpots": 4, "strength": 7, "leagueGrade": 2, "southAmerican": true,  "leaguePrestige": 0.65, "places": ["Puerto Bravo", "Las Pampas", "Villa del Sol"] },
+    "Uruguai":    { "promotionSpots": 3, "relegationSpots": 3, "strength": 5, "leagueGrade": 1, "southAmerican": true,  "leaguePrestige": 0.35, "places": ["Costa Dorada", "Punta Alta", "Bahía Norte"] },
+    "Espanha":    { "promotionSpots": 3, "relegationSpots": 3, "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.90, "places": ["Costa Brava", "Sierra Alta", "Vega Dorada"] },
+    "Inglaterra": { "promotionSpots": 3, "relegationSpots": 3, "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 1.00, "places": ["Riverside", "Northgate", "Kingswood"] },
+    "Itália":     { "promotionSpots": 3, "relegationSpots": 3, "strength": 6, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.90, "places": ["Monte Rosso", "Porto Chiaro", "Lago Blu"] },
+    "Alemanha":   { "promotionSpots": 3, "relegationSpots": 3, "strength": 7, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.80, "places": ["Rheinfeld", "Bergtal", "Waldstadt"] },
+    "França":     { "promotionSpots": 3, "relegationSpots": 3, "strength": 7, "leagueGrade": 3, "southAmerican": false, "leaguePrestige": 0.80, "places": ["Val d'Or", "Mont Clair", "Beau Rivage"] },
+    "Portugal":   { "promotionSpots": 3, "relegationSpots": 3, "strength": 5, "leagueGrade": 2, "southAmerican": false, "leaguePrestige": 0.50, "places": ["Vale do Tejo", "Costa Norte", "Vila Real"] },
+    "Holanda":    { "promotionSpots": 3, "relegationSpots": 3, "strength": 5, "leagueGrade": 2, "southAmerican": false, "leaguePrestige": 0.50, "places": ["Zeewijk", "Duinpark", "Meerstad"] }
   },
 
   "tiers": [

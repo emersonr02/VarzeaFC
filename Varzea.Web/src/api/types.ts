@@ -146,6 +146,10 @@ export interface SeasonResult {
   // temporada de qualquer outra mudança de clube).
   promoted: boolean;
   relegated: boolean;
+  // Vagas de acesso/rebaixamento do regulamento do país desta temporada — o front
+  // desenha as zonas da tabela com estes números (antes eram 2/4 fixos pra todo país).
+  promotionSpots: number;
+  relegationSpots: number;
 }
 
 export interface ClubOptionsResponse {
