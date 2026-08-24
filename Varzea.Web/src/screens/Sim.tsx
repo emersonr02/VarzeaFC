@@ -66,6 +66,9 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
   const [pendingRequest, setPendingRequest] = useState<Exclude<SeasonRequestKind, "None"> | null>(null);
   const clubNames = useRef<Record<number, string>>({});
   const tickerRef = useRef<HTMLDivElement>(null);
+  // Idade da temporada cujas partidas já foram enfileiradas — evita reenfileirar as
+  // mesmas partidas quando a temporada gera mais de um clipe (final, prêmios, etc).
+  const matchesShownFor = useRef<number | null>(null);
 
   // Timeline de tamanho fixo (ver .ticker-wrap): desce sozinha pro final a cada recorte
   // novo, sem o jogador precisar rolar manualmente.
@@ -127,10 +130,15 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
     }
     setLastSeason(head.season);
     // Modo "jogo a jogo": enfileira as partidas da temporada pra serem reveladas uma a
-    // uma nos próximos cliques; o recorte da temporada fica guardado e só entra na
-    // timeline depois da última partida (NÃO volta pra `queue`, senão popAndDisplay
-    // reenfileiraria as mesmas partidas pra sempre).
-    if (pace === "match" && head.kind === "season" && head.season.matches.length > 0) {
+    // uma nos próximos cliques; o recorte fica guardado e só entra na timeline depois
+    // da última partida (NÃO volta pra `queue`, senão popAndDisplay reenfileiraria as
+    // mesmas partidas pra sempre).
+    // Chaveado pela IDADE, não pelo tipo do clipe: uma temporada pode gerar vários
+    // clipes (final de copa vem ANTES do resumo, depois prêmios/aposentadoria), e
+    // testar `kind === "season"` fazia as partidas nunca aparecerem em toda temporada
+    // que teve final — bug real pego na verificação.
+    if (pace === "match" && head.season.matches.length > 0 && matchesShownFor.current !== head.season.age) {
+      matchesShownFor.current = head.season.age;
       setPendingMatches(
         head.season.matches.map((m) => ({ m, club: head.season.clubName, age: head.season.age }))
       );
@@ -294,7 +302,7 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
 
   return (
     <section className="screen pitch-bg">
-      <div className="wrap">
+      <div className="wrap wrap-wide">
         <div className="top-nav">
           <button className="back-btn" onClick={onExit}>✕ Sair</button>
           <span className="step-label">{POS_LABEL[position]} · {role}</span>
@@ -303,49 +311,64 @@ export function Sim({ nickname, country, position, role, potential, pace, initia
 
         {error && <div className="error-banner">{error}</div>}
 
-        {lastSeason ? (
-          <ClubStatusCard season={lastSeason} country={country} />
-        ) : (
-          <div className="dash-bar">
-            <div className="dash-item"><div className="dash-k">Idade</div><div className="dash-v">{dash?.age ?? "—"}</div></div>
-            <div className="dash-item"><div className="dash-k">Overall</div><div className="dash-v">{dash?.overall ?? "—"}</div></div>
-            <div className="dash-item"><div className="dash-k">Potencial</div><div className="dash-v">{potential}</div></div>
-            <div className="dash-item"><div className="dash-k">Clube</div><div className="dash-v" style={{ fontSize: 12 }}>{dash?.clubName || "—"}</div></div>
+        {/* Painel de 3 colunas (referência visual enviada pelo usuário): tabela à
+            esquerda, ficha do jogador no meio, clube + timeline à direita. Vira uma
+            coluna só no celular (ver .sim-grid no theme.css). */}
+        <div className="sim-grid">
+          <div className="sim-col">
+            {lastSeason
+              ? <LeagueTablePanel season={lastSeason} />
+              : <div className="panel"><div className="panel-title">Tabela</div><p className="empty-msg" style={{ padding: "12px 4px", fontSize: 13 }}>A tabela aparece depois da primeira temporada.</p></div>}
           </div>
-        )}
 
-        {lastSeason && (
-          <ManagementPanel
-            lastSeason={lastSeason}
-            pendingRequest={pendingRequest}
-            canRequest={canRequest}
-            onSelect={(k) => setPendingRequest((cur) => (cur === k ? null : k))}
-          />
-        )}
+          <div className="sim-col">
+            <PlayerCard
+              nickname={nickname}
+              position={position}
+              role={role}
+              potential={potential}
+              season={lastSeason}
+              country={country}
+            />
+          </div>
 
-        {/* Ofertas/propostas são notificação FORA da timeline das rodadas — nunca
-            entram no ticker abaixo (ver pendingPause/popAndDisplay). */}
-        {pendingPause && (
-          <PendingPauseNotification
-            pause={pendingPause}
-            clubFor={clubFor}
-            onAccept={() => handleDecision(true)}
-            onDecline={() => handleDecision(false)}
-            onChooseContract={handleContractChoice}
-          />
-        )}
+          <div className="sim-col">
+            {lastSeason && <ClubStatusCard season={lastSeason} country={country} showTable={false} />}
 
-        <div className="ticker-wrap" ref={tickerRef}>
-          {displayed.map((item, i) =>
-            item.t === "match" ? (
-              <MatchClip key={i} match={item.m} club={item.club} />
-            ) : (
-              <Clip key={i} clip={item.c} nickname={nickname} country={country} clubFor={clubFor} />
-            )
-          )}
-          {displayed.length === 0 && !loading && (
-            <p className="empty-msg">Clique em "Avançar" pra começar sua primeira temporada.</p>
-          )}
+            {lastSeason && (
+              <ManagementPanel
+                lastSeason={lastSeason}
+                pendingRequest={pendingRequest}
+                canRequest={canRequest}
+                onSelect={(k) => setPendingRequest((cur) => (cur === k ? null : k))}
+              />
+            )}
+
+            {/* Ofertas/propostas são notificação FORA da timeline das rodadas — nunca
+                entram no ticker abaixo (ver pendingPause/popAndDisplay). */}
+            {pendingPause && (
+              <PendingPauseNotification
+                pause={pendingPause}
+                clubFor={clubFor}
+                onAccept={() => handleDecision(true)}
+                onDecline={() => handleDecision(false)}
+                onChooseContract={handleContractChoice}
+              />
+            )}
+
+            <div className="ticker-wrap" ref={tickerRef}>
+              {displayed.map((item, i) =>
+                item.t === "match" ? (
+                  <MatchClip key={i} match={item.m} club={item.club} />
+                ) : (
+                  <Clip key={i} clip={item.c} nickname={nickname} country={country} clubFor={clubFor} />
+                )
+              )}
+              {displayed.length === 0 && !loading && (
+                <p className="empty-msg">Clique em "Avançar" pra começar sua primeira temporada.</p>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="sim-controls">
@@ -590,13 +613,13 @@ function leagueNameFor(clubTier: number, country: string): string {
 // resumo de temporada dentro do ticker (.clip é um cartão claro). Bug real corrigido:
 // o texto padrão herdava --ink (quase preto, pensado pra cartão claro) e ficava
 // ilegível sobre o fundo escuro do .dash-bar ("horrível, sem contraste nenhum").
-function LeagueTableView({ rows, dark = false }: { rows: ReturnType<typeof leagueTableRowsToShow>; dark?: boolean }) {
+function LeagueTableView({ rows, dark = false, tall = false }: { rows: ReturnType<typeof leagueTableRowsToShow>; dark?: boolean; tall?: boolean }) {
   if (rows.length === 0) return null;
   const relegationCut = rows.length - RELEGATION_SPOTS;
   const rowColor = dark ? "rgba(255,255,255,0.92)" : undefined;
   const ownColor = dark ? "var(--gold)" : "var(--blue)";
   return (
-    <div style={{ maxHeight: 220, overflowY: "auto" }}>
+    <div style={{ maxHeight: tall ? 620 : 220, overflowY: "auto" }}>
       {rows.map((r) => {
         const inPromotionZone = r.rank <= PROMOTION_SPOTS;
         const inRelegationZone = r.rank > relegationCut;
@@ -631,7 +654,7 @@ function LeagueTableView({ rows, dark = false }: { rows: ReturnType<typeof leagu
 // fica sempre visível no topo (não só dentro do resumo de cada temporada), mostrando o
 // clube atual, a divisão, o status na tabela (campeão/zona de acesso/rebaixamento) e a
 // tabela completa da última temporada fechada.
-function ClubStatusCard({ season, country }: { season: SeasonResult; country: string }) {
+function ClubStatusCard({ season, country, showTable = true }: { season: SeasonResult; country: string; showTable?: boolean }) {
   // "country" aqui é a NACIONALIDADE (fixa, escolhida no Setup) — a liga/divisão usa
   // season.clubCountry, que pode divergir depois de uma transferência internacional
   // (roadmap pós-§9, "não vi uma partida com transferências para outra liga").
@@ -677,11 +700,84 @@ function ClubStatusCard({ season, country }: { season: SeasonResult; country: st
         <div className="dash-item"><div className="dash-k">Assist.</div><div className="dash-v">{season.assists}</div></div>
         <div className="dash-item"><div className="dash-k">Jogos</div><div className="dash-v">{season.apps}</div></div>
       </div>
-      {tableRows.length > 0 && (
+      {showTable && tableRows.length > 0 && (
         <div style={{ marginTop: 10, fontSize: 11 }}>
           <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--paper2)" }}>Tabela completa · {leagueName}</div>
           <LeagueTableView rows={tableRows} dark />
         </div>
+      )}
+    </div>
+  );
+}
+
+// Tabela numa coluna própria (layout de 3 colunas) — mesma LeagueTableView, só com o
+// cabeçalho e o quadro em volta.
+function LeagueTablePanel({ season }: { season: SeasonResult }) {
+  const rows = leagueTableRowsToShow(season);
+  if (rows.length === 0) return null;
+  return (
+    <div className="panel">
+      <div className="panel-title">{leagueNameFor(season.clubTier, season.clubCountry)}</div>
+      <div style={{ fontSize: 11 }}>
+        <LeagueTableView rows={rows} dark tall />
+      </div>
+    </div>
+  );
+}
+
+// Cartão "VOCÊ" (coluna do meio) — quem é o jogador AGORA: overall grande, posição,
+// idade, valor de mercado e a nota da última temporada. Espelha a referência visual
+// enviada pelo usuário, sem copiar layout literal.
+function PlayerCard({ nickname, position, role, potential, season, country }: {
+  nickname: string;
+  position: Pos;
+  role: string;
+  potential: number;
+  season: SeasonResult | null;
+  country: string;
+}) {
+  return (
+    <div className="panel">
+      <div className="panel-title">Você</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div className="player-avatar">{nickname.slice(0, 1).toUpperCase()}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: "var(--font-d)", fontSize: 16, color: "#fff", lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis" }}>{nickname}</div>
+          <div style={{ fontSize: 10, color: "var(--paper2)" }}>{season?.clubName ?? country}</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+        <div>
+          <div className="dash-k">Geral</div>
+          <div style={{ fontFamily: "var(--font-d)", fontSize: 40, color: "var(--gold)", lineHeight: 0.95 }}>
+            {season?.overall ?? "—"}
+          </div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div className="dash-k">Potencial</div>
+          <div style={{ fontFamily: "var(--font-d)", fontSize: 22, color: "rgba(255,255,255,0.85)", lineHeight: 1 }}>{potential}</div>
+        </div>
+      </div>
+
+      <div className="kv"><span>Posição</span><b>{POS_LABEL[position]}</b></div>
+      <div className="kv"><span>Perfil</span><b>{role}</b></div>
+      <div className="kv"><span>Idade</span><b>{season?.age ?? "—"}</b></div>
+      <div className="kv"><span>Valor</span><b>{season ? `€${season.marketValue}M` : "—"}</b></div>
+
+      {season && (
+        <>
+          <div className="panel-title" style={{ marginTop: 10 }}>Última temporada</div>
+          <div className="kv"><span>Jogos</span><b>{season.apps}</b></div>
+          <div className="kv"><span>Gols</span><b>{season.goals}</b></div>
+          <div className="kv"><span>Assistências</span><b>{season.assists}</b></div>
+          <div className="kv">
+            <span>Nota</span>
+            <b style={{ color: season.seasonRating >= 7 ? "#27ae60" : season.seasonRating >= 6 ? "var(--gold)" : "#e05a4d" }}>
+              {season.seasonRating > 0 ? season.seasonRating.toFixed(2) : "—"}
+            </b>
+          </div>
+        </>
       )}
     </div>
   );

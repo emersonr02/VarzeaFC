@@ -211,3 +211,18 @@ body {
 .small-note { font-size: 11px; color: rgba(239, 227, 192, 0.55); margin-top: 22px; line-height: 1.5; font-family: var(--font-b); }
 
 .error-banner { background: var(--rust); color: #fff; padding: 10px 14px; border-radius: 6px; font-family: var(--font-b); font-size: 13px; margin-bottom: 14px; }
+
+/* ---- Painel de 3 colunas da simulação (roadmap pós-§9, referência visual) ----
+   A tela de carreira precisa de mais largura que o resto do app (.wrap = 640px):
+   tabela + ficha do jogador + clube/timeline lado a lado. Abaixo de 900px vira
+   uma coluna só, na ordem em que está no HTML. */
+.wrap.wrap-wide { max-width: 1180px; }
+.sim-grid { display: grid; grid-template-columns: 270px 240px 1fr; gap: 12px; align-items: start; }
+.sim-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (max-width: 900px) { .sim-grid { grid-template-columns: 1fr; } }
+
+.panel { background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(243, 195, 50, 0.3); border-radius: 10px; padding: 10px; }
+.panel-title { font-family: var(--font-b); color: var(--gold); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; margin-bottom: 6px; }
+.kv { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--paper2); padding: 2px 0; }
+.kv b { color: #fff; font-weight: 700; }
+.player-avatar { width: 38px; height: 38px; min-width: 38px; border-radius: 50%; background: var(--blue); border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: var(--font-d); color: #fff; font-size: 17px; }
