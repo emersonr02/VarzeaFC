@@ -191,7 +191,14 @@ public class ClubAndLeagueTests
                     if (s.ClubCountry != country)
                     {
                         sawInternational = true;
-                        Assert.Equal(5, s.ClubTier);
+                        // Mudar de país só acontece pra divisão de cima (tier 3-5) —
+                        // ninguém cruza fronteira pra jogar a segundona de outro lugar.
+                        // Antes esta asserção exigia tier 5, de quando a transferência
+                        // internacional só existia saindo de um clube grande; hoje o
+                        // destino sai do teto GLOBAL do jogador (ver GlobalClubRating),
+                        // então um overall médio chega num clube de 1ª divisão sem ser
+                        // necessariamente um dos gigantes.
+                        Assert.InRange(s.ClubTier, 3, 5);
                         // A temporada ANTERIOR (se existir) ainda tinha que estar no
                         // país de origem — a mudança leva 1 temporada pra valer, mesmo
                         // padrão de qualquer outra troca de clube no motor.

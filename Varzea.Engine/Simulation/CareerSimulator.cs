@@ -1120,6 +1120,47 @@ public sealed class CareerSimulator
     private const double InternationalProposalChance = 0.22;
     private const int InternationalOverallThreshold = 80;
 
+    /// <summary>
+    /// Nível GLOBAL de um clube: junta o tamanho dele DENTRO do país (tier) com o peso
+    /// da liga onde ele joga (LeaguePrestige). Sem isso, "tier 5" no Brasil e "tier 5"
+    /// na Inglaterra pareciam a mesma coisa e o jogo oferecia Manchester City e Botafogo
+    /// lado a lado como se fossem opções equivalentes — o tier sozinho só diz quem é
+    /// grande no próprio quintal, não quem é grande no mundo.
+    /// Escala resultante: Man City (Ing t5) 70 · Real (Esp t5) 66 · Bayern (Ale t5) 62 ·
+    /// clube médio inglês (t3) 58 · Botafogo (Bra t5) 56 · Mirassol (Bra t3) 44.
+    /// </summary>
+    private double GlobalClubRating(string country, int tier)
+    {
+        double prestige = _rules.Countries.TryGetValue(country, out var c) ? c.LeaguePrestige : 0.5;
+        return tier * 6.0 + prestige * 40.0;
+    }
+
+    /// <summary>Até que nível global o jogador consegue atrair, pelo overall. Calibrado
+    /// pra que só um jogador realmente de ponta (90) alcance o topo absoluto: um overall
+    /// 84 chega no patamar de um grande alemão, não no do Manchester City.</summary>
+    private static double GlobalCeilingFor(int overall) => Math.Clamp(overall - 20, 20, 72);
+
+    /// <summary>Escolhe um destino no exterior compatível com o teto do jogador —
+    /// prefere o melhor que caiba (jogador quer subir), com variação pra não ser sempre
+    /// o mesmo clube. Null quando nada no exterior cabe no teto.</summary>
+    private (string Country, int Tier)? PickForeignTarget(string homeCountry, double ceiling, Pcg32 rng)
+    {
+        var candidates = new List<(string Country, int Tier)>();
+        foreach (var name in _clubs.Countries.Keys)
+        {
+            if (name == homeCountry || !_rules.Countries.ContainsKey(name)) continue;
+            // Mudar de país só compensa pra divisão de cima — ninguém cruza fronteira
+            // pra jogar a segundona de outro lugar.
+            for (int t = 3; t <= 5; t++)
+                if (GlobalClubRating(name, t) <= ceiling) candidates.Add((name, t));
+        }
+        if (candidates.Count == 0) return null;
+
+        var best = candidates.OrderByDescending(x => GlobalClubRating(x.Country, x.Tier)).ToList();
+        int take = Math.Min(best.Count, 4);
+        return best[rng.NextInt(0, take - 1)];
+    }
+
     private List<ContractProposalOption> GenerateContractProposals(
         string country, int tier, int overall, int target, Pcg32 rng, bool? forceDirection = null,
         string? currentClub = null)
@@ -1133,9 +1174,16 @@ public sealed class CareerSimulator
         // sempre tier±1, então um camisa 9 de overall 86 preso na 2ª divisão só recebia
         // sondagem do vizinho de tabela (bug real relatado: "tava com over 86 na Série B
         // e só veio Mirassol e Coritiba"). Agora ele salta direto pro nível que merece.
-        int ceilingByOverall = overall >= 84 ? 5 : overall >= 78 ? 4 : overall >= 70 ? 3 : 2;
+        // O teto é GLOBAL (ver GlobalClubRating): o mesmo overall alcança o tier 5 de um
+        // país médio mas não o de uma liga de elite. maxDomesticTier é o maior tier do
+        // país de origem que cabe nesse teto.
+        double ceiling = GlobalCeilingFor(overall);
+        int maxDomesticTier = 1;
+        for (int t = 5; t >= 1; t--)
+            if (GlobalClubRating(country, t) <= ceiling) { maxDomesticTier = t; break; }
+
         int primaryTier = qualifiesUpgrade
-            ? Math.Clamp(Math.Max(tier + 1, ceilingByOverall), 1, 5)
+            ? Math.Clamp(Math.Max(tier + 1, maxDomesticTier), 1, 5)
             : Math.Clamp(tier - 1, 1, 5);
 
         // Só a proposta PRIMÁRIA pode ser internacional — lateral/esticada continuam
@@ -1149,10 +1197,13 @@ public sealed class CareerSimulator
         // carreira que existe.
         string primaryCountry = country;
         bool international = false;
-        if (overall >= InternationalOverallThreshold && primaryTier >= 4 && rng.Chance(InternationalProposalChance))
+        if (overall >= InternationalOverallThreshold && rng.Chance(InternationalProposalChance))
         {
-            var foreign = _clubs.PickForeignCountry(country, rng);
-            if (foreign is not null) { primaryCountry = foreign; primaryTier = Math.Max(primaryTier, 4); international = true; }
+            // O destino sai do teto GLOBAL, não de um sorteio livre de país+tier: é isso
+            // que impede o jogo de oferecer Manchester City pra quem ainda não tem
+            // tamanho pra isso.
+            var destino = PickForeignTarget(country, ceiling, rng);
+            if (destino is { } d) { primaryCountry = d.Country; primaryTier = d.Tier; international = true; }
         }
 
         // Clube sorteado AQUI, na geração — o mesmo nome mostrado na proposta é o que
@@ -1179,11 +1230,13 @@ public sealed class CareerSimulator
             // abaixo — clubes diferentes disputando o mesmo jogador.
             int suitorTier = Math.Clamp(primaryTier - (i % 2), 1, 5);
             string suitorCountry = country;
-            // Parte do assédio de um jogador de elite vem de fora.
+            // Parte do assédio de um jogador de elite vem de fora — mas o pretendente
+            // estrangeiro também respeita o teto global (senão voltava a aparecer clube
+            // grande demais na lista, só que num cartão secundário).
             if (overall >= InternationalOverallThreshold && rng.Chance(0.35))
             {
-                var foreign = _clubs.PickForeignCountry(country, rng);
-                if (foreign is not null) suitorCountry = foreign;
+                var destinoSuitor = PickForeignTarget(country, ceiling, rng);
+                if (destinoSuitor is { } ds) { suitorCountry = ds.Country; suitorTier = ds.Tier; }
             }
             string suitorClub = _clubs.PickClub(suitorCountry, suitorTier, rng, currentClub);
             // Nunca dois cartões do mesmo clube na mesma janela.
