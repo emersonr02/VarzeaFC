@@ -1121,29 +1121,43 @@ public sealed class CareerSimulator
     private const int InternationalOverallThreshold = 80;
 
     /// <summary>
-    /// Nível GLOBAL de um clube: junta o tamanho dele DENTRO do país (tier) com o peso
-    /// da liga onde ele joga (LeaguePrestige). Sem isso, "tier 5" no Brasil e "tier 5"
-    /// na Inglaterra pareciam a mesma coisa e o jogo oferecia Manchester City e Botafogo
-    /// lado a lado como se fossem opções equivalentes — o tier sozinho só diz quem é
-    /// grande no próprio quintal, não quem é grande no mundo.
-    /// Escala resultante: Man City (Ing t5) 70 · Real (Esp t5) 66 · Bayern (Ale t5) 62 ·
-    /// clube médio inglês (t3) 58 · Botafogo (Bra t5) 56 · Mirassol (Bra t3) 44.
+    /// Nível do clube na MESMA escala de overall do jogador — referência de balanço é o
+    /// EA FC, onde 83 já é o melhor jogador do Brasileirão (Arrascaeta no Flamengo) e 79
+    /// é um titular de meio de tabela da Premier League (Paquetá no West Ham).
+    /// Junta o peso da liga (LeaguePrestige) com o tamanho do clube dentro dela (tier).
+    ///
+    /// Escala resultante:
+    ///   Man City (Ing t5)   86     Flamengo (Bra t5)   80
+    ///   Real/Barça (Esp t5) 84     médio inglês (t3)   78
+    ///   Bayern (Ale t5)     82     Benfica (Por t5)    77
+    ///   médio inglês (t4)   82     meio do Brasileirão 72-76
+    ///   Uruguai (t5)        74     Série B (Bra t2)    68
     /// </summary>
-    private double GlobalClubRating(string country, int tier)
+    private double ClubLevel(string country, int tier)
     {
         double prestige = _rules.Countries.TryGetValue(country, out var c) ? c.LeaguePrestige : 0.5;
-        return tier * 6.0 + prestige * 40.0;
+        return 48.0 + prestige * 18.0 + tier * 4.0;
     }
 
-    /// <summary>Até que nível global o jogador consegue atrair, pelo overall. Calibrado
-    /// pra que só um jogador realmente de ponta (90) alcance o topo absoluto: um overall
-    /// 84 chega no patamar de um grande alemão, não no do Manchester City.</summary>
-    private static double GlobalCeilingFor(int overall) => Math.Clamp(overall - 20, 20, 72);
+    /// <summary>
+    /// Faixa de clubes que fazem sentido pra um jogador deste overall. Tem TETO e PISO:
+    /// o teto impede o jogo de oferecer Manchester City pra quem não tem tamanho; o piso
+    /// impede o oposto, que era o buraco de verdade — sem ele, um overall 89 continuava
+    /// recebendo sondagem de clube brasileiro, sendo que nessa escala 83 já é o melhor
+    /// do Brasileirão inteiro (bug relatado: "onde que um jogador 89 vai jogar no
+    /// Brasil?"). Clube não corre atrás de quem está muito acima do próprio patamar, e
+    /// craque não desce pra um degrau muito abaixo do dele.
+    /// </summary>
+    private bool ClubFitsPlayer(string country, int tier, int overall)
+    {
+        double level = ClubLevel(country, tier);
+        return level >= overall - 6 && level <= overall + 5;
+    }
 
-    /// <summary>Escolhe um destino no exterior compatível com o teto do jogador —
-    /// prefere o melhor que caiba (jogador quer subir), com variação pra não ser sempre
-    /// o mesmo clube. Null quando nada no exterior cabe no teto.</summary>
-    private (string Country, int Tier)? PickForeignTarget(string homeCountry, double ceiling, Pcg32 rng)
+    /// <summary>Escolhe um destino no exterior dentro da faixa do jogador — prefere o
+    /// melhor que caiba (jogador quer subir), com variação pra não ser sempre o mesmo
+    /// clube. Null quando nada no exterior serve.</summary>
+    private (string Country, int Tier)? PickForeignTarget(string homeCountry, int overall, Pcg32 rng)
     {
         var candidates = new List<(string Country, int Tier)>();
         foreach (var name in _clubs.Countries.Keys)
@@ -1152,11 +1166,11 @@ public sealed class CareerSimulator
             // Mudar de país só compensa pra divisão de cima — ninguém cruza fronteira
             // pra jogar a segundona de outro lugar.
             for (int t = 3; t <= 5; t++)
-                if (GlobalClubRating(name, t) <= ceiling) candidates.Add((name, t));
+                if (ClubFitsPlayer(name, t, overall)) candidates.Add((name, t));
         }
         if (candidates.Count == 0) return null;
 
-        var best = candidates.OrderByDescending(x => GlobalClubRating(x.Country, x.Tier)).ToList();
+        var best = candidates.OrderByDescending(x => ClubLevel(x.Country, x.Tier)).ToList();
         int take = Math.Min(best.Count, 4);
         return best[rng.NextInt(0, take - 1)];
     }
@@ -1174,16 +1188,16 @@ public sealed class CareerSimulator
         // sempre tier±1, então um camisa 9 de overall 86 preso na 2ª divisão só recebia
         // sondagem do vizinho de tabela (bug real relatado: "tava com over 86 na Série B
         // e só veio Mirassol e Coritiba"). Agora ele salta direto pro nível que merece.
-        // O teto é GLOBAL (ver GlobalClubRating): o mesmo overall alcança o tier 5 de um
-        // país médio mas não o de uma liga de elite. maxDomesticTier é o maior tier do
-        // país de origem que cabe nesse teto.
-        double ceiling = GlobalCeilingFor(overall);
-        int maxDomesticTier = 1;
+        // A faixa é GLOBAL e tem teto E piso (ver ClubFitsPlayer): o mesmo overall
+        // alcança o clube grande de um país médio mas não o de uma liga de elite — e,
+        // no outro extremo, clube pequeno demais para de sondar quem já passou do nível
+        // dele. bestDomesticTier é o maior tier do país de origem que ainda serve.
+        int bestDomesticTier = 0;
         for (int t = 5; t >= 1; t--)
-            if (GlobalClubRating(country, t) <= ceiling) { maxDomesticTier = t; break; }
+            if (ClubFitsPlayer(country, t, overall)) { bestDomesticTier = t; break; }
 
         int primaryTier = qualifiesUpgrade
-            ? Math.Clamp(Math.Max(tier + 1, maxDomesticTier), 1, 5)
+            ? Math.Clamp(Math.Max(tier + 1, bestDomesticTier), 1, 5)
             : Math.Clamp(tier - 1, 1, 5);
 
         // Só a proposta PRIMÁRIA pode ser internacional — lateral/esticada continuam
@@ -1197,12 +1211,17 @@ public sealed class CareerSimulator
         // carreira que existe.
         string primaryCountry = country;
         bool international = false;
-        if (overall >= InternationalOverallThreshold && rng.Chance(InternationalProposalChance))
+        // Se NENHUM clube do país serve mais (bestDomesticTier == 0), o jogador já passou
+        // do teto da liga dele — nessa altura a única saída realista é o exterior, então
+        // a proposta internacional deixa de ser sorteio e vira a regra. É o caso do
+        // craque de 89 num país onde 83 já é o melhor de todos.
+        bool outgrewLeague = bestDomesticTier == 0;
+        if (outgrewLeague || (overall >= InternationalOverallThreshold && rng.Chance(InternationalProposalChance)))
         {
-            // O destino sai do teto GLOBAL, não de um sorteio livre de país+tier: é isso
-            // que impede o jogo de oferecer Manchester City pra quem ainda não tem
-            // tamanho pra isso.
-            var destino = PickForeignTarget(country, ceiling, rng);
+            // O destino sai da FAIXA do jogador, não de um sorteio livre de país+tier:
+            // é isso que impede o jogo de oferecer Manchester City pra quem não tem
+            // tamanho, e clube pequeno pra quem já passou desse nível.
+            var destino = PickForeignTarget(country, overall, rng);
             if (destino is { } d) { primaryCountry = d.Country; primaryTier = d.Tier; international = true; }
         }
 
@@ -1214,10 +1233,12 @@ public sealed class CareerSimulator
         proposals.Add(new ContractProposalOption(primaryTier, international || qualifiesUpgrade,
             _clubs.PickClub(primaryCountry, primaryTier, rng, currentClub), primaryCountry));
 
-        // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) —
-        // chance cresce com o overall, representando mais clubes de olho num jogador bom.
+        // Segunda proposta: lateral (mesmo tier atual, "fresh start" noutro clube) — só
+        // existe se um clube desse nível ainda faz sentido pro jogador. Sem essa
+        // checagem, o craque que já superou a liga continuava recebendo cartão do
+        // vizinho de tabela.
         double lateralChance = Math.Clamp((overall - 65) / 45.0, 0.15, 0.85);
-        if (rng.Chance(lateralChance) && primaryTier != tier)
+        if (rng.Chance(lateralChance) && primaryTier != tier && ClubFitsPlayer(country, tier, overall))
             proposals.Add(new ContractProposalOption(tier, false, _clubs.PickClub(country, tier, rng, currentClub), country));
 
         // CONCORRÊNCIA PELO JOGADOR — quanto melhor ele é, mais clubes entram na
@@ -1230,14 +1251,20 @@ public sealed class CareerSimulator
             // abaixo — clubes diferentes disputando o mesmo jogador.
             int suitorTier = Math.Clamp(primaryTier - (i % 2), 1, 5);
             string suitorCountry = country;
-            // Parte do assédio de um jogador de elite vem de fora — mas o pretendente
-            // estrangeiro também respeita o teto global (senão voltava a aparecer clube
-            // grande demais na lista, só que num cartão secundário).
-            if (overall >= InternationalOverallThreshold && rng.Chance(0.35))
+
+            // Quem já superou a liga do próprio país só recebe assédio de fora; os
+            // demais, parte de fora e parte de casa. Em ambos os casos o pretendente
+            // respeita a FAIXA (teto e piso) — senão o clube grande demais (ou pequeno
+            // demais) voltava a aparecer, só que num cartão secundário.
+            bool goAbroad = outgrewLeague || (overall >= InternationalOverallThreshold && rng.Chance(0.35));
+            if (goAbroad)
             {
-                var destinoSuitor = PickForeignTarget(country, ceiling, rng);
+                var destinoSuitor = PickForeignTarget(country, overall, rng);
                 if (destinoSuitor is { } ds) { suitorCountry = ds.Country; suitorTier = ds.Tier; }
+                else if (outgrewLeague) continue; // nada no mundo serve: sem cartão extra
             }
+            if (!ClubFitsPlayer(suitorCountry, suitorTier, overall)) continue;
+
             string suitorClub = _clubs.PickClub(suitorCountry, suitorTier, rng, currentClub);
             // Nunca dois cartões do mesmo clube na mesma janela.
             if (proposals.Any(p => p.ClubName == suitorClub)) continue;
